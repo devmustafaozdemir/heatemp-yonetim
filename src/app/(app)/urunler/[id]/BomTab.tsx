@@ -1,4 +1,4 @@
-import { ListTree, Pencil } from "lucide-react";
+import { AlertTriangle, ListTree, Pencil, Plus } from "lucide-react";
 import { Alert, Badge, ButtonLink, Card, EmptyState, ErrorState, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
@@ -20,6 +20,11 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
   ]);
   const simById = new Map(sims);
   const entryByKey = new Map((bom.data ?? []).map((b) => [`${b.variant_id}:${b.material_id}`, b]));
+  const withoutBom = variants.filter((v) => {
+    const r = simById.get(v.id);
+    return r?.sim && !r.sim.has_bom;
+  });
+  const withBom = variants.filter((v) => !withoutBom.includes(v));
 
   return (
     <div className="grid gap-4">
@@ -29,8 +34,18 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
         partiye sabitlenir (Maliyet sekmesi).
       </Alert>
       {bom.error ? <ErrorState message={bom.error} compact /> : null}
+                </div>
+                <ButtonLink href={`/urunler/${product.id}/varyant/${v.id}?sekme=bom`} size="sm" variant={isAdmin ? "soft" : "secondary"}>
+                  {isAdmin ? <Plus aria-hidden /> : null}
+                  {isAdmin ? "Reçete tanımla" : "Varyantı aç"}
+                </ButtonLink>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-        {variants.map((v) => {
+        {withBom.map((v) => {
           const r = simById.get(v.id);
           const sim = r?.sim ?? null;
           const href = `/urunler/${product.id}/varyant/${v.id}?sekme=bom`;
@@ -118,6 +133,24 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
           );
         })}
       </div>
+      {withoutBom.length > 0 ? (
+        <Card
+          title="Reçetesi olmayan varyantlar"
+          icon={AlertTriangle}
+          description="Reçete olmadan tahmini maliyet hesaplanamaz ve üretim simülasyonu yapılamaz."
+          padded={false}
+          actions={<span className="text-xs text-ink-muted">{fmtInt(withoutBom.length)} varyant</span>}
+        >
+          <ul className="divide-y divide-line">
+            {withoutBom.map((v) => (
+              <li key={v.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5">
+                <div className="min-w-0">
+                  <span className="font-medium text-ink">{v.variant_name}</span> <span className="code text-ink-muted">{v.variant_code}</span>
+                  {!v.is_active ? (
+                    <span className="ml-2">
+                      <Badge>Pasif</Badge>
+                    </span>
+                  ) : null}
     </div>
   );
 }

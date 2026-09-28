@@ -53,7 +53,7 @@ export async function VariantCostTab({ ctx, data, sp }: { ctx: AuthContext; data
           value={fmtMinutes(e.unit_production_minutes)}
           icon={Clock}
           tone="amber"
-          description={`${e.minutes_overridden ? "Varyanta özel" : "Ürün varsayılanı"} · 100 adet ≈ ${fmtMinutes(Number(e.unit_production_minutes) * 100)}`}
+          description={`${e.minutes_overridden ? "Varyanta özel" : "Ürün varsayılanı"}${Number(e.unit_production_minutes) > 0 ? ` · 100 adet ≈ ${fmtMinutes(Number(e.unit_production_minutes) * 100)}` : ""}`}
         />
       </div>
 

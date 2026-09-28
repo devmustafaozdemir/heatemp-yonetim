@@ -1,7 +1,7 @@
-import { AlertTriangle, ChevronRight } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { StockStatusBadge } from "@/components/StockStatus";
-import { Badge, Card, EmptyState, ErrorState, ProgressBar, TableWrap, buttonClass, cx } from "@/components/ui";
+import { Badge, Card, EmptyState, ErrorState, ProgressBar, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
 import { fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { load } from "@/lib/query";
@@ -36,7 +36,7 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                 <th>Varyant</th>
                 <th className="num">Satış fiyatı</th>
                 <th className="num">Birim süre</th>
-                <th className="num" title="Kritik / minimum / hedef stok eşikleri">
+                <th className="num whitespace-normal" title="Kritik / minimum / hedef stok eşikleri">
                   Eşikler (K / M / H)
                 </th>
                 <th className="num">Stok (adet)</th>
@@ -46,7 +46,6 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                   Maliyet (USD)
                 </th>
                 <th>Durum</th>
-                <th aria-label="İşlemler" />
               </tr>
             </thead>
             <tbody>
@@ -76,7 +75,7 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                       </div>
                       <SourceTag overridden={v.thresholds_overridden} />
                     </td>
-                    <td className="num min-w-32">
+                    <td className="num min-w-28">
                       {o ? (
                         <>
                           <span className="font-semibold text-ink">{fmtInt(o.total_remaining)}</span>
@@ -89,7 +88,7 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                               label={`${v.variant_name}: stok / hedef`}
                             />
                           </div>
-                          <div className="mt-0.5 text-[11px] text-ink-muted">
+                          <div className="mt-0.5 text-[11px] whitespace-nowrap text-ink-muted">
                             Heatemp {fmtInt(o.heatemp_qty)} · Mekonsis {fmtInt(o.mekonsis_qty)}
                           </div>
                         </>
@@ -121,11 +120,6 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                       </dl>
                     </td>
                     <td>{v.is_active ? <Badge tone="green">Aktif</Badge> : <Badge>{v.variant_is_active ? "Ürün pasif" : "Pasif"}</Badge>}</td>
-                    <td className="text-right">
-                      <Link href={href} className={cx(buttonClass("ghost", "sm"), "size-8 px-0")} title="Varyant detayı" aria-label={`${v.variant_code} detayı`}>
-                        <ChevronRight aria-hidden />
-                      </Link>
-                    </td>
                   </tr>
                 );
               })}

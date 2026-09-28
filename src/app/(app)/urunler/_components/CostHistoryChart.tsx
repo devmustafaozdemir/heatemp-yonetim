@@ -42,20 +42,22 @@ export function CostHistoryChart({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-ink-muted">Birim maliyet · {cur === "USD" ? "USD" : "TL (kayıt değeri)"}</p>
-        <Segmented<Cur>
-          label="Para birimi"
-          value={cur}
-          onChange={setCur}
-          options={[
-            ["USD", "USD"],
-            ["TRY", "TL"],
-          ]}
-        />
-      </div>
+      {points.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-ink-muted">Birim maliyet · {cur === "USD" ? "USD" : "TL (kayıt değeri)"}</p>
+          <Segmented<Cur>
+            label="Para birimi"
+            value={cur}
+            onChange={setCur}
+            options={[
+              ["USD", "USD"],
+              ["TRY", "TL"],
+            ]}
+          />
+        </div>
+      ) : null}
       <ChartFrame
-        height={height}
+        height={points.length > 0 ? height : 120}
         label={`Tamamlanmış üretim partilerinin birim maliyet geçmişi (${cur})`}
         empty={points.length === 0}
         emptyText="Henüz tamamlanmış üretim partisi yok. Açılış stoğu üretim sayılmaz."
