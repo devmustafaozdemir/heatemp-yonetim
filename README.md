@@ -77,15 +77,26 @@ npm run dev
 npm run dev:stack:down             # durdur ve verileri sil
 ```
 
-### Uzak Supabase projesine migration (bu teslimatta YAPILMADI)
+### Uzak Supabase projesine bağlama (proje: `juzwwepkpikutnnnrsut`)
+
+`.env.local` (git'e gönderilmez) bu projenin adresini ve publishable anahtarını içerir. Migration'lar henüz
+uzak veritabanına **uygulanmadı**. Uygulamak için kendi bilgisayarınızda:
 
 ```bash
-npx supabase link --project-ref <proje-ref>
-npx supabase db push          # yalnızca bekleyen migration'ları uygular
+npx supabase login                                   # erişim belirteci
+npx supabase link --project-ref juzwwepkpikutnnnrsut # veritabanı parolası sorulur
+npx supabase db push --dry-run                       # uygulanacak migration'ları listeler, değiştirmez
+npx supabase db push                                 # 10 migration'ı sırayla uygular
 ```
 
-Canlıya almadan önce Supabase panelinde: e-posta kaydını kapatın (Authentication → Providers), ilk yöneticiyi
-yukarıdaki SQL ile ekleyin, Vercel vb. ortamda yukarıdaki değişkenleri tanımlayın.
+Ardından Supabase panelinde:
+
+1. *Authentication → Sign In / Providers*: e-posta ile kaydı (sign up) kapatın; kullanıcıyı *Authentication → Users → Add user* ile ekleyin.
+2. *SQL Editor*'de ilk yöneticiyi yetkilendirin (aşağıdaki `insert into public.app_users …`).
+3. Otomatik kur için *Project Settings → API Keys*'teki secret / service_role anahtarını yalnızca sunucu
+   ortamına `SUPABASE_SERVICE_ROLE_KEY` olarak ekleyin (tarayıcıya gitmez). Eklenmezse manuel kur kullanılır.
+
+Canlıya alırken barındırma ortamında (ör. Vercel) aynı değişkenleri tanımlayın.
 
 ## Migration dosyaları
 
@@ -100,6 +111,7 @@ yukarıdaki SQL ile ekleyin, Vercel vb. ortamda yukarıdaki değişkenleri tanı
 | `20260928090600_teklifler.sql` | Teklif, tahmin, satışa dönüştürme |
 | `20260928090700_urun_gorselleri.sql` | Özel Storage kovası ve politikaları |
 | `20260928090800_acilis_stogu.sql` | Sistem öncesi mamul için açılış stoğu |
+| `20260928090900_yetki_matrisi.sql` | Açık yetki matrisi: proje varsayılanlarından bağımsız GRANT/REVOKE |
 
 ## Kur (USD/TRY)
 
@@ -114,7 +126,8 @@ yukarıdaki SQL ile ekleyin, Vercel vb. ortamda yukarıdaki değişkenleri tanı
 ```bash
 npm run lint && npm run typecheck
 npm test                      # birim testleri (kur XML/JSON ayrıştırma, sayı/para biçimi, Excel başlık eşleştirme)
-npm run test:db:docker        # temiz supabase/postgres konteyneri + tüm migration'lar + DB testleri
+npm run test:db:docker        # temiz supabase/postgres (17) konteyneri + tüm migration'lar + DB testleri
+# SUPABASE_PG_IMAGE=supabase/postgres:15.8.1.085 veya STRICT_DEFAULTS=1 ile diğer senaryolar
 # veya Supabase CLI ile: npx supabase db reset && npm run test:db
 npm run build
 npm run test:e2e              # yığın + npm run dev çalışırken; playwright paketi ve Chromium gerekir
@@ -124,7 +137,9 @@ Bu teslimatta çalıştırılıp geçen kontroller:
 
 - **Lint, typecheck, `next build`:** hatasız.
 - **Birim testleri:** 13/13.
-- **Veritabanı testleri (24/24)**, `supabase/postgres:15.8.1.085` üzerinde migration'lar sıfırdan uygulanarak:
+- **Veritabanı testleri (24/24)**, migration'lar sıfırdan uygulanarak üç ortamda: `supabase/postgres:15.8.1.085`,
+  `supabase/postgres:17.6.1.178` ve PG17 + yeni tabloları API rollerine otomatik açmayan kısıtlı varsayılan yetkiler
+  (`STRICT_DEFAULTS=1`; yetki matrisi migration'ı olmadan bu senaryoda 18 test "permission denied" ile düşer):
   - Uçtan uca: 100 üretim → Heatemp 100; 80 teslimat → Heatemp 20, Mekonsis 80, ciro/kâr 0;
     30 satış (50 USD, kur 40) → Heatemp 20, Mekonsis 50, satılan 30, ciro ₺60.000, maliyet ₺5.400, kâr ₺54.600.
   - Farklı maliyetli iki partiden 120 adet satış: 100 adet 1. partiden, 20 adet 2. partiden FIFO tahsis ve doğru maliyet.
@@ -149,6 +164,8 @@ Bu teslimatta çalıştırılıp geçen kontroller:
   (birim testleri) doğrulandı; uçtan uca testlerde manuel kur kullanıldı.
 - Supabase CLI ile `supabase start` Docker Hub çekme limiti nedeniyle burada tamamlanamadı; `config.toml`
   CLI tarafından ayrıştırıldı, migration'lar Supabase'in resmi imajlarından kurulan yığında doğrulandı.
+- Bu çalışma ortamının ağ politikası `juzwwepkpikutnnnrsut.supabase.co` adresine erişime izin vermediği için uzak
+  projeye bağlantı buradan test edilemedi ve migration'lar uzak veritabanına uygulanmadı.
 - Tarihsel maliyet ilkesi: USD alınmış malzemenin TL maliyeti alış günü kuruyla sabitlenir (bkz. MIMARI §7).
 - Mekonsis'ten Heatemp'e kısmi iade yoktur; yalnızca hiç satış yapılmamış teslimat tamamen geri alınabilir.
 - Kullanıcı yönetimi arayüzü yoktur (tek yönetici); kullanıcılar Supabase panelinden eklenir.

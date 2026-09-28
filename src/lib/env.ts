@@ -9,7 +9,7 @@ export function supabaseUrl(): string {
 }
 
 export function supabasePublicKey(): string {
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!key) {
     throw new Error(
       "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (veya NEXT_PUBLIC_SUPABASE_ANON_KEY) tanımlı değil. .env.local dosyasını kontrol edin.",

@@ -8,7 +8,7 @@ import { supabaseUrl } from "@/lib/env";
  * gönderilmez; NEXT_PUBLIC_ öneki yoktur.
  */
 export function createServiceClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
   if (!key) return null;
   return createClient(supabaseUrl(), key, {
     auth: { persistSession: false, autoRefreshToken: false },

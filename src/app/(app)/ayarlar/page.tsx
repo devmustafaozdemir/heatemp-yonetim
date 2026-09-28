@@ -19,7 +19,7 @@ export default async function SettingsPage() {
     suggestFx(ctx, null).catch(() => null),
   ]);
   const isAdmin = ctx.role === "admin";
-  const hasServiceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY);
+  const hasServiceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY);
 
   return (
     <>

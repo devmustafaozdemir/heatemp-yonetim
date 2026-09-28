@@ -104,6 +104,9 @@ Görünümler (`security_invoker`, RLS'e tabi): `v_variants`, `v_materials`, `v_
   - İdempotency: formlar her gönderimde bir `request_id` üretir; aynı kimlikle gelen tekrar istek aynı kaydı
     döndürür (danışma kilidi + benzersiz indeks). Teklif dönüştürme ikinci kez satış oluşturmaz.
   - Durum geçişleri tetikleyiciyle korunur (Üretimde → Tamamlandı | İptal; kapanmış parti/satış/teklif değişmez).
+- **Açık yetki matrisi** (`20260928090900_yetki_matrisi.sql`): `authenticated` rolüne tablo/görünüm okuma ve
+  yalnızca ana veri tablolarına yazma yetkisi açıkça verilir; `anon` hiçbir şeye erişemez. Böylece uzak projenin
+  varsayılan yetkileri (yeni tabloları API'ye otomatik açıp açmaması) davranışı değiştirmez.
 - Service role anahtarı yalnızca sunucuda, yalnızca otomatik kur kaydı için okunur; `NEXT_PUBLIC_` öneki yoktur.
 - Ürün görselleri özel Storage kovasındadır; `/urun-gorseli/...` rotası oturum sahibinin yetkisiyle okur.
 
