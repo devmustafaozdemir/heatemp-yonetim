@@ -1,7 +1,2 @@
-import { Badge } from "@/components/ui";
-
-export function QuoteStatusBadge({ status }: { status: "open" | "converted" | "cancelled" }) {
-  if (status === "converted") return <Badge tone="green">Satışa dönüştü</Badge>;
-  if (status === "cancelled") return <Badge>İptal</Badge>;
-  return <Badge tone="blue">Açık</Badge>;
-}
+// Geriye dönük uyumluluk: rozetler src/components/status.tsx'e taşındı.
+export { QuoteStatusBadge } from "@/components/status";

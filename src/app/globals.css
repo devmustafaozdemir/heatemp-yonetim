@@ -1,12 +1,52 @@
 @import "tailwindcss";
 
+/*
+ * Heatemp tasarım sistemi — tek kaynak.
+ * Renkler Tailwind teması olarak tanımlıdır (bg-brand-600, text-ink-muted…);
+ * bileşen sınıfları (.card, .input, .table-base…) aşağıdaki @layer components içindedir.
+ * Kullanım kılavuzu: docs/TASARIM_SISTEMI.md
+ */
 @theme {
   --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --color-brand-50: #fff4ed;
-  --color-brand-100: #ffe6d4;
-  --color-brand-500: #ea580c;
-  --color-brand-600: #c2410c;
-  --color-brand-700: #9a3412;
+
+  /* Ana vurgu: lacivert-mavi (butonlar, aktif durumlar, bağlantılar) */
+  --color-brand-50: #eef1f8;
+  --color-brand-100: #dde3f1;
+  --color-brand-200: #bcc7e3;
+  --color-brand-300: #8f9fcd;
+  --color-brand-400: #6479b3;
+  --color-brand-500: #4a5fa0;
+  --color-brand-600: #405189;
+  --color-brand-700: #354473;
+  --color-brand-800: #2b375c;
+  --color-brand-900: #1e2945;
+
+  /* Grafik ve durum renkleri (Velzon benzeri dengeli palet) */
+  --color-chart-blue: #3577f1;
+  --color-chart-teal: #0ab39c;
+  --color-chart-sky: #299cdb;
+  --color-chart-amber: #f7b84b;
+  --color-chart-red: #f06548;
+  --color-chart-violet: #6559cc;
+  --color-chart-slate: #878a99;
+
+  /* Yüzeyler ve metin */
+  --color-canvas: #f3f3f9;
+  --color-line: #e9ebec;
+  --color-line-strong: #dfe2e6;
+  --color-ink: #212529;
+  --color-ink-soft: #495057;
+  --color-ink-muted: #878a99;
+
+  /* Sol menü */
+  --color-nav: #1e2945;
+  --color-nav-hover: #26324f;
+  --color-nav-text: #abb9e8;
+  --color-nav-title: #838fb9;
+
+  --shadow-card: 0 1px 2px rgba(56, 65, 74, 0.15);
+  --shadow-pop: 0 5px 10px rgba(30, 32, 37, 0.12);
+  --radius-card: 0.375rem;
 }
 
 @layer base {
@@ -14,41 +54,97 @@
     color-scheme: light;
   }
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-canvas text-[13.5px] text-ink-soft antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-ink;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-500;
   }
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
   }
+  dialog::backdrop {
+    background: rgba(18, 25, 43, 0.45);
+  }
 }
 
 @layer components {
+  /* Kart */
+  .card {
+    @apply rounded-(--radius-card) border border-line bg-white shadow-(--shadow-card);
+  }
+  .card-header {
+    @apply flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-4 py-3;
+  }
+  .card-title {
+    @apply text-[15px] font-semibold text-ink;
+  }
+
+  /* Form */
   .input {
-    @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500;
+    @apply block w-full rounded-md border border-line-strong bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted/80 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:bg-slate-100 disabled:text-ink-muted aria-invalid:border-red-400 aria-invalid:focus:ring-red-100;
+  }
+  [data-invalid] .input {
+    @apply border-red-400 focus:ring-red-100;
+  }
+  .input-sm {
+    @apply py-1.5 text-[13px];
   }
   .label {
-    @apply mb-1 block text-xs font-medium text-slate-600;
+    @apply mb-1 block text-[13px] font-medium text-ink-soft;
   }
+  .required::after {
+    content: " *";
+    @apply text-red-500;
+  }
+  .help {
+    @apply mt-1 block text-xs text-ink-muted;
+  }
+  .field-error {
+    @apply mt-1 flex items-center gap-1 text-xs font-medium text-red-600;
+  }
+
+  /* Tablo */
   .table-base {
-    @apply w-full text-sm;
+    @apply w-full border-collapse text-[13px];
   }
   .table-base thead th {
-    @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 whitespace-nowrap;
+    @apply border-b border-line bg-[#f3f6f9] px-3 py-2.5 text-left text-xs font-semibold tracking-wide whitespace-nowrap text-ink-soft;
   }
   .table-base tbody td {
-    @apply border-b border-slate-100 px-3 py-2 align-top;
+    @apply border-b border-line px-3 py-2.5 align-middle;
   }
-  .table-base tbody tr:hover {
-    @apply bg-slate-50/70;
+  .table-base tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table-base tbody tr:hover td {
+    @apply bg-[#f8f9fb];
   }
   .table-base .num {
-    @apply text-right tabular-nums whitespace-nowrap;
+    @apply text-right whitespace-nowrap tabular-nums;
   }
   .table-base tfoot td {
-    @apply border-t border-slate-300 bg-slate-50 px-3 py-2 font-semibold;
+    @apply border-t border-line-strong bg-[#f8f9fb] px-3 py-2.5 font-semibold text-ink;
   }
+  .table-compact tbody td,
+  .table-compact thead th {
+    @apply px-2.5 py-1.5;
+  }
+
   .link {
-    @apply text-brand-700 hover:underline;
+    @apply font-medium text-brand-600 hover:text-brand-800 hover:underline;
+  }
+  .code {
+    @apply font-mono text-xs whitespace-nowrap text-ink-soft;
+  }
+  .muted {
+    @apply text-xs text-ink-muted;
   }
 }

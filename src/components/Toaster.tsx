@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckCircle2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const EVENT = "heatemp:toast";
@@ -17,20 +18,29 @@ export function Toaster() {
       const id = ++seq;
       const message = (e as CustomEvent<string>).detail;
       setItems((xs) => [...xs, { id, message }]);
-      window.setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), 5000);
+      window.setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), 6000);
     };
     window.addEventListener(EVENT, onToast);
     return () => window.removeEventListener(EVENT, onToast);
   }, []);
   return (
-    <div aria-live="polite" className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-80 flex-col gap-2">
+    <div aria-live="polite" className="pointer-events-none fixed right-4 bottom-4 z-[70] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
       {items.map((t) => (
         <div
           key={t.id}
           role="status"
-          className="pointer-events-auto rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 shadow-lg"
+          className="pointer-events-auto flex items-start gap-2.5 rounded-md border border-chart-teal/30 bg-white px-3.5 py-3 text-[13px] text-ink shadow-(--shadow-pop)"
         >
-          {t.message}
+          <CheckCircle2 className="mt-px size-4 shrink-0 text-chart-teal" aria-hidden />
+          <span className="min-w-0 flex-1">{t.message}</span>
+          <button
+            type="button"
+            onClick={() => setItems((xs) => xs.filter((x) => x.id !== t.id))}
+            className="-m-1 rounded p-1 text-ink-muted hover:bg-canvas hover:text-ink"
+            aria-label="Bildirimi kapat"
+          >
+            <X className="size-3.5" aria-hidden />
+          </button>
         </div>
       ))}
     </div>

@@ -1,3 +1,4 @@
+import { AlertTriangle, DollarSign } from "lucide-react";
 import Link from "next/link";
 import { fmtDate, fmtRate } from "@/lib/format";
 import type { FxSuggestion } from "@/lib/fx/service";
@@ -11,30 +12,42 @@ export function fxSourceLabel(source: string, rateType?: string) {
   return base;
 }
 
-/** Üst çubuktaki kur göstergesi: kaynak, tarih ve geçerlilik açıkça gösterilir. */
+/** Üst bardaki kur göstergesi: kur, kaynak, kurun tarihi ve geçerlilik açıkça gösterilir. */
 export function FxBadge({ suggestion, warning }: { suggestion: FxSuggestion | null; warning: string | null }) {
   const valid = suggestion?.is_valid ?? false;
+  const title = suggestion
+    ? `USD/TRY ${fmtRate(suggestion.rate)} — ${fxSourceLabel(suggestion.source, suggestion.rate_type)}, kur tarihi ${fmtDate(suggestion.rate_date)}${warning ? ` · ${warning}` : ""}`
+    : (warning ?? "Kur yok");
   return (
     <Link
       href="/ayarlar#kur"
-      title={warning ?? undefined}
+      title={title}
       className={cx(
-        "flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs",
-        valid ? "border-slate-200 text-slate-600 hover:bg-slate-50" : "border-amber-300 bg-amber-50 text-amber-900",
+        "flex max-w-[60vw] items-center gap-2 rounded-md border px-2 py-1.5 text-xs leading-tight transition-colors sm:px-2.5",
+        valid ? "border-line bg-white text-ink-soft hover:bg-canvas" : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100",
       )}
     >
-      <span className="font-semibold">USD/TRY</span>
+      <span
+        className={cx(
+          "flex size-6 shrink-0 items-center justify-center rounded",
+          valid ? "bg-chart-teal/10 text-chart-teal" : "bg-amber-200/60 text-amber-800",
+        )}
+        aria-hidden
+      >
+        {valid ? <DollarSign className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
+      </span>
       {suggestion ? (
-        <>
-          <span className="tabular-nums">{fmtRate(suggestion.rate)}</span>
-          <span className="text-slate-400">·</span>
-          <span>
-            {fxSourceLabel(suggestion.source, suggestion.rate_type)}, {fmtDate(suggestion.rate_date)}
+        <span className="min-w-0">
+          <span className="block font-semibold whitespace-nowrap text-ink">
+            USD/TRY <span className="tabular-nums">{fmtRate(suggestion.rate)}</span>
           </span>
-          {!valid ? <span className="font-semibold">— güncel değil, kuru güncelleyin</span> : null}
-        </>
+          <span className="hidden truncate text-[11px] text-ink-muted md:block">
+            {fxSourceLabel(suggestion.source, suggestion.rate_type)} · {fmtDate(suggestion.rate_date)}
+            {!valid ? " · güncel değil" : ""}
+          </span>
+        </span>
       ) : (
-        <span className="font-semibold">Kur yok — otomatik alınamadı, manuel kur girin</span>
+        <span className="font-semibold whitespace-nowrap">Kur yok — manuel kur girin</span>
       )}
     </Link>
   );

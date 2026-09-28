@@ -1,9 +1,11 @@
 "use client";
 
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createContext, use, useRef, useState, useTransition, type ReactNode } from "react";
 import { notifySuccess } from "@/components/Toaster";
-import { Alert, Button, cx } from "@/components/ui";
+import { Alert, Button, cx, type ButtonVariant } from "@/components/ui";
+import { useDialog } from "@/components/ui/dialog";
 import { initialActionState, type ActionState } from "@/lib/form";
 
 export type ServerAction = (formData: FormData) => Promise<ActionState>;
@@ -27,6 +29,7 @@ export function ActionForm({
   resetOnSuccess = false,
   showSuccess = true,
   onSuccess,
+  closeDialogOnSuccess = true,
 }: {
   action: ServerAction;
   children: ReactNode | ((state: { pending: boolean; result: ActionState }) => ReactNode);
@@ -35,8 +38,11 @@ export function ActionForm({
   resetOnSuccess?: boolean;
   showSuccess?: boolean;
   onSuccess?: (result: ActionState) => void;
+  /** Modal/yan panel içindeyse başarıdan sonra kapat (varsayılan). */
+  closeDialogOnSuccess?: boolean;
 }) {
   const router = useRouter();
+  const dialog = useDialog();
   const formRef = useRef<HTMLFormElement>(null);
   const [requestId, setRequestId] = useState(newRequestId);
   const [result, setResult] = useState<ActionState>(initialActionState);
@@ -62,6 +68,7 @@ export function ActionForm({
         setRequestId(newRequestId());
         if (resetOnSuccess) formRef.current?.reset();
         onSuccess?.(next);
+        if (closeDialogOnSuccess) dialog?.close();
         if (next.redirectTo) router.push(next.redirectTo);
       }
     });
@@ -106,7 +113,12 @@ export function useFormPending(): boolean {
 
 export function FieldError({ name }: { name: string }) {
   const error = useFieldError(name);
-  return error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null;
+  return error ? (
+    <span className="field-error" role="alert">
+      <AlertCircle className="size-3.5" aria-hidden />
+      {error}
+    </span>
+  ) : null;
 }
 
 export function FormField({
@@ -115,20 +127,28 @@ export function FormField({
   hint,
   children,
   className,
+  required,
 }: {
   name: string;
   label: ReactNode;
   hint?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Etikette zorunlu alan işareti (*) gösterir. */
+  required?: boolean;
 }) {
   const error = useFieldError(name);
   return (
-    <label className={cx("block", className)}>
-      <span className="label">{label}</span>
+    <label className={cx("block min-w-0", className)} data-invalid={error ? "" : undefined}>
+      <span className={cx("label", required && "required")}>{label}</span>
       {children}
-      {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
-      {!error && hint ? <span className="mt-1 block text-xs text-slate-500">{hint}</span> : null}
+      {error ? (
+        <span className="field-error" role="alert">
+          <AlertCircle className="size-3.5" aria-hidden />
+          {error}
+        </span>
+      ) : null}
+      {!error && hint ? <span className="help">{hint}</span> : null}
     </label>
   );
 }
@@ -142,7 +162,7 @@ export function SubmitButton({
 }: {
   children: ReactNode;
   pending?: boolean;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: ButtonVariant;
   size?: "sm" | "md";
   disabled?: boolean;
 }) {
@@ -150,7 +170,14 @@ export function SubmitButton({
   const pending = pendingProp ?? pendingCtx;
   return (
     <Button type="submit" variant={variant} size={size} disabled={pending || disabled} aria-busy={pending}>
-      {pending ? "İşleniyor…" : children}
+      {pending ? (
+        <>
+          <Loader2 className="animate-spin" aria-hidden />
+          Kaydediliyor…
+        </>
+      ) : (
+        children
+      )}
     </Button>
   );
 }

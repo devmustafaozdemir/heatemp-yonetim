@@ -124,3 +124,27 @@ export function todayTr(): string {
   }).format(new Date());
   return parts;
 }
+
+/** Grafik eksenleri ve kartlar için kısa tutar: ₺905 bin, ₺1,2 mn, $12,5 bin. */
+export function fmtCompactMoney(value: Num, currency: Currency | string = "TRY"): string {
+  const n = toNumber(value);
+  if (n === null) return "—";
+  const symbol = SYMBOL[currency as Currency] ?? `${currency} `;
+  const sign = n < 0 ? "−" : "";
+  const a = Math.abs(n);
+  if (a >= 1_000_000) return `${sign}${symbol}${nf(0, 1).format(a / 1_000_000)} mn`;
+  if (a >= 10_000) return `${sign}${symbol}${nf(0, 0).format(a / 1_000)} bin`;
+  if (a >= 1_000) return `${sign}${symbol}${nf(0, 1).format(a / 1_000)} bin`;
+  return `${sign}${symbol}${nf(0, 0).format(a)}`;
+}
+
+/**
+ * Önceki döneme göre yüzde değişim. Önceki değer 0 veya bilinmiyorsa null döner
+ * (yüzde uydurulmaz).
+ */
+export function pctChange(current: Num, previous: Num): number | null {
+  const c = toNumber(current);
+  const p = toNumber(previous);
+  if (c === null || p === null || p === 0) return null;
+  return ((c - p) / Math.abs(p)) * 100;
+}

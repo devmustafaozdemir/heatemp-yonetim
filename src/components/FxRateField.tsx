@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { lookupFx, saveManualFx } from "@/app/(app)/fx-actions";
 import { Button, cx } from "@/components/ui";
@@ -70,32 +71,42 @@ export function FxRateField({
       {valid && fx ? <input type="hidden" name={name} value={fx.id} /> : null}
       <div
         className={cx(
-          "rounded-md border px-3 py-2 text-sm",
-          loading ? "border-slate-200 text-slate-500" : valid ? "border-slate-200 bg-slate-50" : "border-amber-300 bg-amber-50",
+          "flex items-start gap-2 rounded-md border px-3 py-2 text-sm",
+          loading ? "border-line text-ink-muted" : valid ? "border-chart-teal/30 bg-chart-teal/5" : "border-chart-amber/50 bg-chart-amber/10",
         )}
+        aria-live="polite"
       >
+        {loading ? (
+          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" aria-hidden />
+        ) : valid ? (
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-chart-teal" aria-hidden />
+        ) : (
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[#c98a1c]" aria-hidden />
+        )}
+        <div className="min-w-0 flex-1">
         {loading ? (
           "Kur kontrol ediliyor…"
         ) : fx ? (
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-semibold tabular-nums">{fmtRate(fx.rate)}</span>
-            <span className="text-xs text-slate-600">
+            <span className="font-semibold text-ink tabular-nums">{fmtRate(fx.rate)}</span>
+            <span className="text-xs text-ink-muted">
               {SOURCE[fx.source] ?? fx.source}
               {fx.source === "TCMB" ? (fx.rate_type === "ForexSelling" ? " döviz satış" : " döviz alış") : ""},{" "}
               {fmtDate(fx.rate_date)} tarihli
               {fx.age_days > 0 ? ` (işlem tarihinden ${fx.age_days} gün önce)` : ""}
             </span>
             {!valid ? (
-              <span className="w-full text-xs font-medium text-amber-900">
+              <span className="w-full text-xs font-medium text-[#8a5b0a]">
                 Bu kur işlem tarihi için çok eski (en fazla {fx.max_age_days} gün). Kuru güncelleyin veya bu tarih
                 için manuel kur girin.
               </span>
             ) : null}
           </div>
         ) : (
-          <span className="text-xs font-medium text-amber-900">Bu tarih için kayıtlı kur yok.</span>
+          <span className="text-xs font-medium text-[#8a5b0a]">Bu tarih için kayıtlı kur yok.</span>
         )}
-        {message && !loading ? <div className="mt-1 text-xs text-amber-900">{message}</div> : null}
+        {message && !loading ? <div className="mt-1 text-xs text-[#8a5b0a]">{message}</div> : null}
+        </div>
       </div>
       {canManual ? (
         <div className="mt-1.5">
@@ -119,7 +130,7 @@ export function FxRateField({
               </Button>
             </div>
           ) : (
-            <button type="button" className="text-xs text-brand-700 hover:underline" onClick={() => setManualOpen(true)}>
+            <button type="button" className="text-xs font-medium text-brand-600 hover:underline" onClick={() => setManualOpen(true)}>
               Manuel kur gir
             </button>
           )}
