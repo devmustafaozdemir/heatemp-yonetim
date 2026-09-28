@@ -6,7 +6,7 @@ import { StockStatusBadge } from "@/components/StockStatus";
 import { Alert, Badge, ButtonLink, Card, PageHeader } from "@/components/ui";
 import { Drawer } from "@/components/ui/dialog";
 import { LinkTabs } from "@/components/ui/list";
-import { requireMember } from "@/lib/auth";
+import { getAuthContext, requireMember } from "@/lib/auth";
 import { fmtDate, fmtInt, fmtMinutes, fmtMoney } from "@/lib/format";
 import { first, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
@@ -22,7 +22,13 @@ import { GeneralTab } from "./GeneralTab";
 import { StockTab } from "./StockTab";
 import { VariantsTab } from "./VariantsTab";
 
-export const metadata: Metadata = { title: "Ürün" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const ctx = await getAuthContext();
+  if (!ctx || !isUuid(id)) return { title: "Ürün" };
+  const { data } = await ctx.supabase.from("products").select("name").eq("id", id).maybeSingle<{ name: string }>();
+  return { title: data?.name ?? "Ürün" };
+}
 
 const TABS = [
   { key: "genel", label: "Genel bilgiler" },

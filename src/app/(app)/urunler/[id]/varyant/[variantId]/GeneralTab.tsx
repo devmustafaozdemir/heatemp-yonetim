@@ -53,7 +53,7 @@ export async function VariantGeneralTab({ ctx, data, isAdmin }: { ctx: AuthConte
         )}
       </div>
 
-      <div className="grid min-w-0 content-start gap-4">
+      <div className="grid min-w-0 content-start items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
         <Card title="Geçerli değerler" icon={SlidersHorizontal} description="Varyantın kullandığı değerler ve kaynağı">
           <DefinitionList
             columns={1}
@@ -84,7 +84,7 @@ export async function VariantGeneralTab({ ctx, data, isAdmin }: { ctx: AuthConte
           title="Reçete özeti"
           icon={ListTree}
           footer={
-            <Link href={`/urunler/${product.id}/varyant/${variant.id}?sekme=bom`} className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline">
+            <Link href={`/urunler/${product.id}/varyant/${variant.id}`} className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline">
               {isAdmin ? "Reçeteyi düzenle" : "Reçete ayrıntısı"}
               <ArrowRight className="size-3.5" aria-hidden />
             </Link>

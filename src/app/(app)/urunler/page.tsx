@@ -13,6 +13,7 @@ import { parseListParams, searchPattern, type SearchParams } from "@/lib/list-pa
 import { load } from "@/lib/query";
 import { ProductThumb, StatusMeter, fmtCostRange } from "./_components/bits";
 import { StockByProductChart, type StockBarRow } from "./_components/StockByProductChart";
+import { redirectIfPageOutOfRange } from "./_components/paging";
 import type { ProductListRow } from "./_components/types";
 import { createProduct } from "./actions";
 import { ProductFields } from "./ProductFields";
@@ -95,6 +96,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         .returns<StatRow[]>(),
     ),
   ]);
+
+  redirectIfPageOutOfRange(res.error, lp, BASE);
 
   // Özet: aktif ürünlerin aktif varyantları (pasif ürünün varyantları pasif sayılır).
   const all = stats.data ?? [];
@@ -271,8 +274,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           </EmptyState>
         ) : (
           <>
-            {/* Masaüstü ve tablet: tablo */}
-            <TableWrap className="relative hidden md:block">
+            {/* Geniş ekran: tablo */}
+            <TableWrap className="relative hidden xl:block">
               <table className="table-base">
                 <thead>
                   <tr>
@@ -373,10 +376,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
               </table>
             </TableWrap>
 
-            {/* Mobil: kart listesi */}
-            <ul className="divide-y divide-line md:hidden">
+            {/* Tablet ve mobil: kart listesi */}
+            <ul className="-mb-px grid grid-cols-1 sm:grid-cols-2 xl:hidden">
               {rows.map((p) => (
-                <li key={p.id} className="px-4 py-3.5">
+                <li key={p.id} className="min-w-0 border-b border-line px-4 py-3.5 sm:odd:border-r">
                   <div className="flex items-start gap-3">
                     <ProductThumb path={p.image_path} size="md" />
                     <div className="min-w-0 flex-1">
@@ -404,38 +407,39 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                         ) : null}
                       </div>
                     </div>
-                  </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Stok (Heatemp + Mekonsis)</dt>
-                      <dd className="font-semibold text-ink tabular-nums">
-                        {fmtInt(p.total_remaining)} <span className="text-xs font-normal text-ink-muted">({fmtInt(p.heatemp_qty)} + {fmtInt(p.mekonsis_qty)})</span>
-                      </dd>
+                    <div className="-mt-1 -mr-2 shrink-0">
+                      <RowActions id={p.id} name={p.name} />
                     </div>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2.5 text-[13px]">
                     <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Varyant</dt>
-                      <dd className="font-semibold text-ink tabular-nums">{fmtInt(p.variant_count)}</dd>
+                      <dt className="text-xs text-ink-muted">Stok</dt>
+                      <dd className="font-semibold text-ink tabular-nums">{fmtInt(p.total_remaining)} adet</dd>
+                      <dd className="text-[11px] text-ink-muted tabular-nums">
+                        <abbr title="Heatemp rafı" className="no-underline">H</abbr> {fmtInt(p.heatemp_qty)} · <abbr title="Mekonsis rafı" className="no-underline">M</abbr> {fmtInt(p.mekonsis_qty)}
+                      </dd>
                     </div>
                     <div className="min-w-0">
                       <dt className="text-xs text-ink-muted">Satış fiyatı</dt>
                       <dd className="tabular-nums">{fmtMoney(p.default_sale_price, p.default_currency)}</dd>
                     </div>
                     <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Üretim süresi</dt>
+                      <dt className="text-xs text-ink-muted">Birim süre</dt>
                       <dd className="tabular-nums">{fmtMinutes(p.unit_production_minutes)}</dd>
                     </div>
                     <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Son parti maliyeti</dt>
+                      <dt className="text-xs text-ink-muted">Varyant</dt>
+                      <dd className="tabular-nums">{fmtInt(p.variant_count)}</dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Son parti</dt>
                       <dd className="tabular-nums">{fmtCostRange(p.last_cost_usd_min, p.last_cost_usd_max, "USD")}</dd>
                     </div>
                     <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Reçete maliyeti (tahmini)</dt>
+                      <dt className="text-xs text-ink-muted">Tahmini reçete</dt>
                       <dd className="tabular-nums">{fmtCostRange(p.est_cost_usd_min, p.est_cost_usd_max, "USD")}</dd>
                     </div>
                   </dl>
-                  <div className="mt-3 flex justify-end">
-                    <RowActions id={p.id} name={p.name} />
-                  </div>
                 </li>
               ))}
             </ul>

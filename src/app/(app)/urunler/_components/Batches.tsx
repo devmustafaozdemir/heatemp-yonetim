@@ -7,6 +7,7 @@ import type { AuthContext } from "@/lib/auth";
 import { fmtDate, fmtInt, fmtMinutes, fmtMoney, fmtRate, fmtUnitMoney } from "@/lib/format";
 import type { ListParams } from "@/lib/list-params";
 import { load, type Loaded } from "@/lib/query";
+import { redirectIfPageOutOfRange } from "./paging";
 import type { CostPoint } from "./types";
 
 export type BatchScope = { column: "product_id" | "variant_id"; value: string };
@@ -81,6 +82,7 @@ export async function BatchHistoryCard({
       .range(lp.from, lp.to)
       .returns<BatchRow[]>(),
   );
+  redirectIfPageOutOfRange(res.error, lp, basePath, keep);
   const values = { ...lp.values, ...keep };
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath, values };
   const rows = res.data ?? [];

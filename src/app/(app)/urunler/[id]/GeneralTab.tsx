@@ -65,7 +65,7 @@ export async function GeneralTab({
         )}
       </div>
 
-      <div className="grid min-w-0 content-start gap-4">
+      <div className="grid min-w-0 content-start items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
         <Card title="Görsel" icon={ImageIcon}>
           {product.image_path ? (
             // eslint-disable-next-line @next/next/no-img-element

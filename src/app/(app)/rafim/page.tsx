@@ -1,160 +1,296 @@
+import { CalendarClock, History, Layers, Package, PackageOpen, Wallet } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Alert, Card, EmptyState, PageHeader, Stat, TableWrap } from "@/components/ui";
+import { Alert, Badge, ButtonLink, Card, EmptyState, ErrorState, MetricRow, PageHeader, StatCard } from "@/components/ui";
+import { Drawer } from "@/components/ui/dialog";
 import { requireMember } from "@/lib/auth";
-import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney, todayTr } from "@/lib/format";
+import { fmtDate, fmtInt, fmtMoney, todayTr } from "@/lib/format";
+import { first, type SearchParams } from "@/lib/list-params";
+import { buckets } from "@/lib/period";
+import { load } from "@/lib/query";
 import type { HeatempShelfRow } from "@/lib/types";
-import { DeliverForm, type DeliverOption } from "./DeliverForm";
+import { DeliveryDrawer, DeliveryProvider } from "./_components/DeliveryDrawer";
+import { LocationBanner } from "./_components/LocationBanner";
+import { ShelfDonut, ShelfMovementChart } from "./_components/ShelfCharts";
+import { ShelfTable } from "./_components/ShelfTable";
+import {
+  daysSince,
+  groupLayers,
+  last12MonthsFrom,
+  toMovementPoints,
+  type DeliverOption,
+  type MovementRow,
+} from "./_components/types";
 import { OpeningStockForm } from "./OpeningStockForm";
 
-export const metadata: Metadata = { title: "Rafım (Heatemp)" };
+export const metadata: Metadata = { title: "Heatemp rafı" };
 
-export default async function HeatempShelfPage({ searchParams }: { searchParams: Promise<{ varyant?: string }> }) {
-  const { varyant } = await searchParams;
+export default async function HeatempShelfPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const sp = await searchParams;
+  const varyant = first(sp.varyant) || undefined;
+  const islem = first(sp.islem);
   const ctx = await requireMember();
-  const { data, error } = await ctx.supabase
-    .from("v_heatemp_shelf")
-    .select("*")
-    .gt("qty_remaining", 0)
-    .order("display_name")
-    .order("received_on")
-    .returns<HeatempShelfRow[]>();
-  if (error) throw new Error("Raf bilgisi yüklenemedi.");
-  const rows = data ?? [];
-  const { data: allVariants } = await ctx.supabase
-    .from("v_variants")
-    .select("id, display_name")
-    .eq("is_active", true)
-    .order("display_name");
+  const isAdmin = ctx.role === "admin";
+  const today = todayTr();
+  const from = last12MonthsFrom(today);
 
-  const byVariant = new Map<string, { name: string; rows: HeatempShelfRow[] }>();
-  for (const r of rows) {
-    const g = byVariant.get(r.variant_id) ?? { name: r.display_name, rows: [] };
-    g.rows.push(r);
-    byVariant.set(r.variant_id, g);
-  }
-  const options: DeliverOption[] = Array.from(byVariant.entries()).map(([variant_id, g]) => ({
-    variant_id,
-    display_name: g.name,
-    available: g.rows.reduce((s, r) => s + r.qty_remaining, 0),
-    batches: g.rows.map((r) => ({ batch_id: r.batch_id, batch_no: r.batch_no, qty: r.qty_remaining, completed_on: r.received_on })),
-  }));
-  const totalQty = rows.reduce((s, r) => s + r.qty_remaining, 0);
-  const totalTry = rows.reduce((s, r) => s + Number(r.value_try), 0);
-  const totalUsd = rows.reduce((s, r) => s + Number(r.value_usd), 0);
+  const [shelf, openings, mekonsis, moves, variants] = await Promise.all([
+    load(
+      ctx.supabase
+        .from("v_heatemp_shelf")
+        .select("*")
+        .gt("qty_remaining", 0)
+        .order("display_name")
+        .order("received_on")
+        .order("completed_at")
+        .returns<HeatempShelfRow[]>(),
+    ),
+    // Açılış stoğu partileri (sistem öncesi stok): az sayıdadır, etiketleme için
+    load(ctx.supabase.from("production_batches").select("id").eq("kind", "opening").returns<{ id: string }[]>()),
+    load(
+      ctx.supabase
+        .from("v_mekonsis_shelf")
+        .select("variant_id, qty_remaining, value_try")
+        .eq("delivery_status", "active")
+        .gt("qty_remaining", 0)
+        .returns<{ variant_id: string; qty_remaining: number; value_try: number }[]>(),
+    ),
+    load<MovementRow[]>(ctx.supabase.rpc("shelf_monthly_movements", { p_location: "heatemp", p_from: from, p_to: today })),
+    isAdmin
+      ? load(ctx.supabase.from("v_variants").select("id, display_name").eq("is_active", true).order("display_name").returns<{ id: string; display_name: string }[]>())
+      : Promise.resolve({ data: [] as { id: string; display_name: string }[], error: null, count: null }),
+  ]);
 
-  return (
-    <>
-      <PageHeader
-        title="Rafım (Heatemp)"
-        description="Tamamlanan üretim partileri buraya girer. Mekonsis'e teslimat bir satış değildir; ürün satılana kadar Heatemp'e aittir."
-      />
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Raftaki adet" value={fmtInt(totalQty)} />
-        <Stat label="Raf maliyet değeri (TL)" value={fmtMoney(totalTry, "TRY")} />
-        <Stat label="USD karşılığı (bilgi)" value={fmtMoney(totalUsd, "USD")} tone="muted" />
-        <Stat label="Farklı varyant" value={fmtInt(byVariant.size)} />
-      </div>
-
-      {ctx.role === "admin" ? (
-        <Card title="Mekonsis'e teslim et" description="Yeterli Heatemp stoğu kontrol edilir; parti kimliği Mekonsis rafında korunur. Ciro, tahsilat veya kâr oluşmaz." className="mb-6">
-          {options.length === 0 ? (
-            <Alert tone="info">Heatemp rafında teslim edilecek ürün yok.</Alert>
-          ) : (
-            <DeliverForm options={options} today={todayTr()} initialVariant={varyant} />
-          )}
-        </Card>
-      ) : null}
-
-      {ctx.role === "admin" ? (
-        <details className="mb-6 rounded-lg border border-slate-200 bg-white shadow-sm">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">
-            Açılış stoğu (sistem öncesi üretilmiş mamul)
-          </summary>
-          <div className="border-t border-slate-100 p-4">
-            <p className="mb-3 text-sm text-slate-600">
-              Uygulamaya geçerken eldeki mamulü gerçek birim maliyetiyle bir kez girin. Hammadde tüketmez, üretim sayılmaz ve
-              maliyet karşılaştırmasına katılmaz. Mekonsis&apos;te duran mevcut stok için önce burada açılış girip ardından aynı
-              tarihli teslimat kaydedin. Excel&apos;den otomatik aktarım yapılmaz.
-            </p>
-            <OpeningStockForm variants={allVariants ?? []} today={todayTr()} />
-          </div>
-        </details>
-      ) : null}
-
-      {rows.length === 0 ? (
-        <EmptyState title="Heatemp rafı boş">Tamamlanan partiler burada görünür.</EmptyState>
-      ) : (
-        <Card title="Varyant ve parti bazında raf" padded={false}>
-          <TableWrap>
-            <table className="table-base">
-              <thead>
-                <tr>
-                  <th>Ürün / varyant</th>
-                  <th>Parti</th>
-                  <th>Tamamlanma</th>
-                  <th className="num">Üretilen</th>
-                  <th className="num">Teslim edilen</th>
-                  <th className="num">Rafta</th>
-                  <th className="num">Birim maliyet</th>
-                  <th className="num">Raf maliyet değeri (TL)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(byVariant.entries()).map(([vid, g]) => (
-                  <VariantGroup key={vid} name={g.name} rows={g.rows} />
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={5}>Toplam</td>
-                  <td className="num">{fmtInt(totalQty)}</td>
-                  <td />
-                  <td className="num">{fmtMoney(totalTry, "TRY")}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </TableWrap>
-        </Card>
-      )}
-    </>
+  const openingIds = new Set((openings.data ?? []).map((o) => o.id));
+  const rows = shelf.data ?? [];
+  const groups = groupLayers(
+    rows.map((r) => ({
+      variant_id: r.variant_id,
+      product_id: r.product_id,
+      display_name: r.display_name,
+      product_code: r.product_code,
+      variant_code: r.variant_code,
+      layer: {
+        layer_id: r.layer_id,
+        batch_id: r.batch_id,
+        batch_no: r.batch_no,
+        opening: openingIds.has(r.batch_id),
+        date: r.received_on,
+        delivery_id: null,
+        delivery_no: null,
+        in_qty: r.produced_qty,
+        out_qty: r.delivered_qty,
+        remaining: r.qty_remaining,
+        unit_cost_try: Number(r.unit_cost_try),
+        unit_cost_usd: Number(r.unit_cost_usd),
+        value_try: Number(r.value_try),
+        value_usd: Number(r.value_usd),
+      },
+    })),
   );
-}
 
-function VariantGroup({ name, rows }: { name: string; rows: HeatempShelfRow[] }) {
-  const qty = rows.reduce((s, r) => s + r.qty_remaining, 0);
-  const value = rows.reduce((s, r) => s + Number(r.value_try), 0);
+  const mekByVariant = new Map<string, number>();
+  let mekQty = 0;
+  let mekValue = 0;
+  for (const m of mekonsis.data ?? []) {
+    mekByVariant.set(m.variant_id, (mekByVariant.get(m.variant_id) ?? 0) + m.qty_remaining);
+    mekQty += m.qty_remaining;
+    mekValue += Number(m.value_try);
+  }
+
+  const options: DeliverOption[] = groups.map((g) => ({
+    variant_id: g.variant_id,
+    display_name: g.display_name,
+    available: g.remaining,
+    mekonsis_qty: mekonsis.error ? null : (mekByVariant.get(g.variant_id) ?? 0),
+    batches: g.layers.map((l) => ({
+      batch_id: l.batch_id,
+      batch_no: l.batch_no,
+      qty: l.remaining,
+      received_on: l.date,
+      opening: l.opening,
+      unit_cost_try: l.unit_cost_try,
+    })),
+  }));
+
+  const totalQty = groups.reduce((s, g) => s + g.remaining, 0);
+  const totalTry = groups.reduce((s, g) => s + g.value_try, 0);
+  const totalUsd = groups.reduce((s, g) => s + g.value_usd, 0);
+  const layers = groups.flatMap((g) => g.layers.map((l) => ({ ...l, name: g.display_name })));
+  const oldest = layers.reduce<(typeof layers)[number] | null>((o, l) => (!o || l.date < o.date ? l : o), null);
+  const openingLayers = layers.filter((l) => l.opening);
+  const prodLayers = layers.filter((l) => !l.opening);
+  const sum = (ls: typeof layers, k: "remaining" | "value_try") => ls.reduce((s, l) => s + l[k], 0);
+
+  const points = toMovementPoints("heatemp", buckets(from, today, "aylik"), moves.data ?? []);
+  const moveTotals = points.reduce(
+    (a, p) => ({ prod: a.prod + p.inQty, opening: a.opening + p.in2Qty, out: a.out + p.outQty, rev: a.rev + p.revQty }),
+    { prod: 0, opening: 0, out: 0, rev: 0 },
+  );
+
   return (
-    <>
-      {rows.map((r, i) => (
-        <tr key={r.layer_id}>
-          <td>{i === 0 ? <span className="font-medium">{name}</span> : null}</td>
-          <td>
-            <Link className="link font-mono text-xs" href={`/uretim/${r.batch_id}`}>
-              {r.batch_no}
-            </Link>
-          </td>
-          <td className="text-xs">{fmtDate(r.received_on)}</td>
-          <td className="num">{fmtInt(r.produced_qty)}</td>
-          <td className="num">{fmtInt(r.delivered_qty)}</td>
-          <td className="num font-medium">{fmtInt(r.qty_remaining)}</td>
-          <td className="num">
-            {fmtUnitMoney(r.unit_cost_usd, "USD")}
-            <div className="text-xs text-slate-500">{fmtUnitMoney(r.unit_cost_try, "TRY")}</div>
-          </td>
-          <td className="num">{fmtMoney(r.value_try, "TRY")}</td>
-        </tr>
-      ))}
-      {rows.length > 1 ? (
-        <tr className="bg-slate-50/70">
-          <td colSpan={5} className="text-right text-xs text-slate-500">
-            {name} toplamı
-          </td>
-          <td className="num font-semibold">{fmtInt(qty)}</td>
-          <td />
-          <td className="num font-semibold">{fmtMoney(value, "TRY")}</td>
-        </tr>
-      ) : null}
-    </>
+    <DeliveryProvider initialVariant={varyant}>
+      <PageHeader
+        title="Heatemp rafı"
+        meta={
+          <Badge tone="blue" title="Üreticinin kendi deposu">
+            Heatemp&apos;in deposu
+          </Badge>
+        }
+        actions={
+          <>
+            <ButtonLink href="/teslimatlar" variant="secondary">
+              <History aria-hidden />
+              Teslimat geçmişi
+            </ButtonLink>
+            {isAdmin ? (
+              <>
+                <Drawer
+                  trigger={
+                    <>
+                      <PackageOpen aria-hidden />
+                      Açılış stoğu
+                    </>
+                  }
+                  triggerVariant="secondary"
+                  title="Açılış stoğu — sistem öncesi stok"
+                  description="Uygulamaya geçişte eldeki mamulü bir kez girin. Heatemp rafına “Açılış stoğu” partisi olarak eklenir."
+                  size="md"
+                >
+                  {variants.error ? (
+                    <ErrorState message={variants.error} compact title="Varyantlar yüklenemedi" />
+                  ) : (
+                    <OpeningStockForm variants={variants.data ?? []} today={today} />
+                  )}
+                </Drawer>
+                {shelf.error ? null : <DeliveryDrawer options={options} today={today} initialOpen={islem === "teslimat"} />}
+              </>
+            ) : null}
+          </>
+        }
+      />
+
+      <LocationBanner kind="heatemp" other={mekonsis.error ? null : { qty: mekQty, value: mekValue }} />
+
+      {shelf.error ? (
+        <Card>
+          <ErrorState message={shelf.error} title="Heatemp rafı yüklenemedi" />
+        </Card>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Raftaki adet"
+              scope="Güncel stok"
+              value={fmtInt(totalQty)}
+              unit="adet"
+              icon={Package}
+              tone="brand"
+              description={`${fmtInt(layers.length)} parti katmanı`}
+            />
+            <StatCard
+              label="Maliyet değeri"
+              scope="Güncel stok"
+              value={fmtMoney(totalTry, "TRY")}
+              icon={Wallet}
+              tone="blue"
+              description={`USD karşılığı ${fmtMoney(totalUsd, "USD")} · parti kurlarıyla (bilgi)`}
+            />
+            <StatCard
+              label="Varyant"
+              scope="Rafta"
+              value={fmtInt(groups.length)}
+              unit="varyant"
+              icon={Layers}
+              tone="violet"
+              description={
+                openingLayers.length > 0
+                  ? `Açılış stoğu: ${fmtInt(sum(openingLayers, "remaining"))} adet · ${fmtMoney(sum(openingLayers, "value_try"), "TRY")}`
+                  : "Açılış stoğu yok; tümü üretim partisi"
+              }
+            />
+            <StatCard
+              label="En eski parti"
+              scope="FIFO sırası"
+              value={oldest ? fmtDate(oldest.date) : "—"}
+              icon={CalendarClock}
+              tone="amber"
+              description={
+                oldest
+                  ? `${oldest.batch_no} · ${fmtInt(daysSince(oldest.date, today))} gündür rafta · ${fmtInt(oldest.remaining)} adet`
+                  : "Rafta parti yok"
+              }
+            />
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+            <Card title="Raf hareketleri" description="Son 12 ay · rafa giriş ve Mekonsis'e teslimat" padded={false}>
+              {moves.error ? (
+                <ErrorState message={moves.error} compact />
+              ) : (
+                <>
+                  <div className="p-4 pb-3">
+                    <ShelfMovementChart kind="heatemp" data={points} />
+                  </div>
+                  <div className="border-t border-line">
+                    <MetricRow
+                      items={[
+                        { label: "Üretim girişi", value: `${fmtInt(moveTotals.prod)} adet` },
+                        { label: "Açılış stoğu girişi", value: `${fmtInt(moveTotals.opening)} adet`, hint: "Üretim sayılmaz" },
+                        {
+                          label: "Mekonsis'e teslimat",
+                          value: `${fmtInt(moveTotals.out)} adet`,
+                          hint: moveTotals.rev > 0 ? `${fmtInt(moveTotals.rev)} adet geri alındı` : "Satış değildir",
+                        },
+                      ]}
+                    />
+                  </div>
+                </>
+              )}
+            </Card>
+            <Card title="Raf değerinin kaynağı" description="Güncel stok · parti maliyeti (TL)">
+              <ShelfDonut
+                unit="try"
+                centerLabel="Raf değeri"
+                label="Heatemp rafı maliyet değerinin üretim partileri ve açılış stoğuna dağılımı"
+                data={[
+                  {
+                    name: "Üretim partileri",
+                    value: sum(prodLayers, "value_try"),
+                    color: "teal",
+                    hint: `${fmtInt(sum(prodLayers, "remaining"))} adet · ${fmtInt(prodLayers.length)} parti`,
+                  },
+                  {
+                    name: "Açılış stoğu",
+                    value: sum(openingLayers, "value_try"),
+                    color: "violet",
+                    hint: `${fmtInt(sum(openingLayers, "remaining"))} adet · ${fmtInt(openingLayers.length)} parti · sistem öncesi`,
+                  },
+                ]}
+              />
+            </Card>
+          </div>
+
+          <Card
+            title="Varyant ve parti dağılımı"
+            description="Varyant satırını açarak parti katmanlarını görün; parti numarası parti detayına gider."
+            padded={false}
+            id="raf"
+          >
+            {openings.error ? (
+              <Alert tone="warning" className="m-4 mb-0">
+                Açılış stoğu etiketleri yüklenemedi ({openings.error}); partiler etiketsiz gösteriliyor.
+              </Alert>
+            ) : null}
+            {groups.length === 0 ? (
+              <EmptyState title="Heatemp rafı boş" icon={Package}>
+                Tamamlanan üretim partileri ve açılış stoğu burada görünür.
+              </EmptyState>
+            ) : (
+              <ShelfTable kind="heatemp" groups={groups} canDeliver={isAdmin} initialVariant={varyant} />
+            )}
+          </Card>
+        </>
+      )}
+    </DeliveryProvider>
   );
 }

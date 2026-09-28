@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { StockStatusBadge } from "@/components/StockStatus";
 import { Badge, ButtonLink, Card, PageHeader } from "@/components/ui";
 import { LinkTabs } from "@/components/ui/list";
-import { requireMember } from "@/lib/auth";
+import { getAuthContext, requireMember } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
 import { fmtDate, fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { first, type SearchParams } from "@/lib/list-params";
@@ -18,7 +18,13 @@ import { VariantGeneralTab } from "./GeneralTab";
 import { VariantStockTab } from "./StockTab";
 import type { VariantPageData } from "./types";
 
-export const metadata: Metadata = { title: "Varyant ve reçete" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string; variantId: string }> }): Promise<Metadata> {
+  const { variantId } = await params;
+  const ctx = await getAuthContext();
+  if (!ctx || !isUuid(variantId)) return { title: "Varyant" };
+  const { data } = await ctx.supabase.from("v_variants").select("display_name").eq("id", variantId).maybeSingle<{ display_name: string }>();
+  return { title: data?.display_name ?? "Varyant" };
+}
 
 const TABS = [
   { key: "genel", label: "Genel" },
@@ -27,6 +33,8 @@ const TABS = [
   { key: "stok", label: "Stok ve hareketler" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
+/** Varyant sayfası reçete düzenleme içindir: sekme verilmezse BOM / reçete açılır. */
+const DEFAULT_TAB: TabKey = "bom";
 
 
 export default async function VariantPage({
@@ -42,7 +50,7 @@ export default async function VariantPage({
   const ctx = await requireMember();
   const isAdmin = ctx.role === "admin";
   const requested = first(sp.sekme);
-  const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : "genel";
+  const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : DEFAULT_TAB;
 
   const [variant, effective, product, overview, simRes] = await Promise.all([
     must(ctx.supabase.from("product_variants").select("*").eq("id", variantId).eq("product_id", id).maybeSingle<ProductVariant>(), "Varyant"),
@@ -144,7 +152,7 @@ export default async function VariantPage({
             tabs={TABS.map((t) => ({
               key: t.key,
               label: t.label,
-              href: t.key === "genel" ? base : `${base}?sekme=${t.key}`,
+              href: t.key === DEFAULT_TAB ? base : `${base}?sekme=${t.key}`,
               count: t.key === "bom" && sim ? sim.lines.length : undefined,
             }))}
           />

@@ -84,8 +84,8 @@ export function StockTable({
       footer={
         <>
           <strong className="font-medium text-ink-soft">Üretilen</strong>: tamamlanmış üretim partileri (açılış stoğu hariç).{" "}
-          <strong className="font-medium text-ink-soft">Birim maliyet</strong> (geniş ekranda): son tamamlanmış üretim partisi (USD, altında TL); değişim
-          önceki partiye göre USD birim maliyetle hesaplanır, tek parti varsa gösterilmez.
+          <strong className="font-medium text-ink-soft">Birim maliyet</strong> (geniş ekranda): son tamamlanmış üretim partisi (USD, altında
+          TL); değişim önceki partiye göre USD birim maliyetle hesaplanır, tek parti varsa gösterilmez.
         </>
       }
     >
@@ -108,7 +108,7 @@ export function StockTable({
       {error ? (
         <ErrorState message={error} />
       ) : (
-        <>
+        <div className="@container">
           <StockTableToolbar
             values={values}
             total={rows.length}
@@ -132,8 +132,11 @@ export function StockTable({
             </EmptyState>
           ) : (
             <>
-              {/* Mobil ve tablet: kart listesi (tablo yatay kaydırma gerektirmeden okunur); xl ve üstü: tablo */}
-              <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:hidden" aria-label="Ürün durumu listesi">
+              {/* Mobil ve tablet: kart listesi (tablo yatay kaydırma gerektirmeden okunur); kart genişliği yeterliyse tablo (kapsayıcı sorgusu) */}
+              <ul
+                className="grid gap-3 p-3 @min-[560px]:grid-cols-2 @min-[860px]:grid-cols-3 @min-[1024px]:hidden"
+                aria-label="Ürün durumu listesi"
+              >
                 {pageRows.map((r) => (
                   <li key={r.variant_id} className="min-w-0 rounded-md border border-line p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -157,9 +160,9 @@ export function StockTable({
                     <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                       {(
                         [
-                          ["Heatemp rafı", r.heatemp_qty],
-                          ["Mekonsis rafı", r.mekonsis_qty],
-                          ["Toplam kalan", r.total_remaining],
+                          ["Heatemp", r.heatemp_qty],
+                          ["Mekonsis", r.mekonsis_qty],
+                          ["Kalan", r.total_remaining],
                         ] as const
                       ).map(([l, v]) => (
                         <div key={l} className="min-w-0 rounded bg-canvas px-2 py-1.5">
@@ -175,13 +178,13 @@ export function StockTable({
                     </p>
                   </li>
                 ))}
-                <li className="rounded-md bg-canvas px-3 py-2.5 text-xs text-ink-soft tabular-nums sm:col-span-2">
+                <li className="rounded-md bg-canvas px-3 py-2.5 text-xs text-ink-soft tabular-nums @min-[560px]:col-span-full">
                   <span className="font-semibold text-ink">Toplam</span> ({fmtInt(rows.length)} varyant): Heatemp{" "}
                   {fmtInt(sum("heatemp_qty"))} · Mekonsis {fmtInt(sum("mekonsis_qty"))} · kalan {fmtInt(sum("total_remaining"))} · satılan{" "}
                   {fmtInt(sum("sold_qty"))}
                 </li>
               </ul>
-              <TableWrap className="hidden xl:block">
+              <TableWrap className="hidden @min-[1024px]:block">
                 <table className="table-base table-compact">
                   <thead>
                     <tr>
@@ -206,7 +209,10 @@ export function StockTable({
                       <SortTh label="Satılan" column="sold_qty" align="right" title="Gerçekleşmiş satışlar" {...th} />
                       <SortTh label="Kalan" column="total_remaining" align="right" title="Toplam kalan: Heatemp + Mekonsis rafı" {...th} />
                       <th>Durum</th>
-                      <th className="num hidden min-[1400px]:table-cell" title="Son tamamlanmış üretim partisinin birim maliyeti (USD / TL)">
+                      <th
+                        className="num hidden @min-[1136px]:table-cell"
+                        title="Son tamamlanmış üretim partisinin birim maliyeti (USD / TL)"
+                      >
                         Birim maliyet
                       </th>
                     </tr>
@@ -255,7 +261,7 @@ export function StockTable({
                         <td>
                           <StockStatusBadge row={r} />
                         </td>
-                        <td className="num hidden min-[1400px]:table-cell">
+                        <td className="num hidden @min-[1136px]:table-cell">
                           {r.last_batch_no ? (
                             <>
                               <span className="text-ink">{fmtUnitMoney(r.last_unit_cost_usd, "USD")}</span>
@@ -291,7 +297,7 @@ export function StockTable({
                       <td className="num">{fmtInt(sum("sold_qty"))}</td>
                       <td className="num">{fmtInt(sum("total_remaining"))}</td>
                       <td />
-                      <td className="hidden min-[1400px]:table-cell" />
+                      <td className="hidden @min-[1136px]:table-cell" />
                     </tr>
                   </tfoot>
                 </table>
@@ -301,7 +307,7 @@ export function StockTable({
           {rows.length > 0 ? (
             <Pagination basePath="/" values={values} page={lp.page} pageSize={lp.pageSize} total={rows.length} noun="varyant" />
           ) : null}
-        </>
+        </div>
       )}
     </Card>
   );

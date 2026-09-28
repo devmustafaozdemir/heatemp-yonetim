@@ -61,89 +61,134 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
               {isAdmin ? "Aşağıdaki formdan malzeme ekleyin veya başka bir varyantın reçetesini kopyalayın." : "Yönetici reçete tanımladığında burada görünür."}
             </EmptyState>
           ) : (
-            <TableWrap className="relative">
-              <table className="table-base">
-                <thead>
-                  <tr>
-                    <th>Malzeme</th>
-                    <th className="num" title="Girilen miktar; altında temel birimdeki karşılığı">
-                      Miktar (1 adet)
-                    </th>
-                    <th className="num">Birim maliyet (USD)</th>
-                    <th className="num">Satır maliyeti</th>
-                    <th className="num" title="Tahmini reçete maliyeti içindeki pay">
-                      Pay
-                    </th>
-                    {isAdmin ? <th aria-label="İşlemler" /> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((b) => {
-                    const line = lineByMaterial.get(b.material_id);
-                    const m = materialById.get(b.material_id);
-                    const lineUsd = toNumber(line?.line_cost_usd);
-                    return (
-                      <tr key={b.id}>
-                        <td className="min-w-48">
+            <>
+              <TableWrap className="relative hidden sm:block">
+                <table className="table-base">
+                  <thead>
+                    <tr>
+                      <th>Malzeme</th>
+                      <th className="num" title="Girilen miktar; altında temel birimdeki karşılığı">
+                        Miktar (1 adet)
+                      </th>
+                      <th className="num">Birim maliyet (USD)</th>
+                      <th className="num">Satır maliyeti</th>
+                      <th className="num" title="Tahmini reçete maliyeti içindeki pay">
+                        Pay
+                      </th>
+                      {isAdmin ? <th aria-label="İşlemler" /> : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((b) => {
+                      const line = lineByMaterial.get(b.material_id);
+                      const m = materialById.get(b.material_id);
+                      const lineUsd = toNumber(line?.line_cost_usd);
+                      return (
+                        <tr key={b.id}>
+                          <td className="min-w-48">
+                            <span className="font-medium text-ink">{line?.name ?? m?.name ?? "—"}</span>{" "}
+                            <span className="code text-ink-muted">{line?.code ?? m?.code}</span>
+                            <div className="text-xs text-ink-muted">
+                              {line ? (line.kind === "component" ? "Komponent" : "Hammadde") : null}
+                              {b.note ? ` · ${b.note}` : null}
+                            </div>
+                          </td>
+                          <td className="num">
+                            {fmtNum(b.entry_qty, 4)} {b.entry_unit}
+                            {line && line.base_unit !== b.entry_unit ? (
+                              <div className="text-xs text-ink-muted">
+                                = {fmtNum(b.qty_per_unit, 6)} {line.base_unit}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="num">
+                            {line && line.unit_cost_usd !== null ? `${fmtUnitMoney(line.unit_cost_usd, "USD")} / ${line.base_unit}` : "—"}
+                            {line?.cost_basis === "last_purchase" ? <div className="text-xs text-ink-muted">son alış (stok yok)</div> : null}
+                            {line?.cost_basis === "none" ? <div className="text-xs text-amber-700">maliyet yok</div> : null}
+                          </td>
+                          <td className="num">
+                            {fmtUnitMoney(line?.line_cost_usd, "USD")}
+                            <div className="text-xs text-ink-muted">{fmtUnitMoney(line?.line_cost_try, "TRY")}</div>
+                          </td>
+                          <td className="num">
+                            {lineUsd !== null && totalUsd > 0
+                              ? `%${((lineUsd / totalUsd) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}`
+                              : "—"}
+                          </td>
+                          {isAdmin ? (
+                            <td className="text-right">
+                              <ActionForm action={deleteBomItem} confirmMessage="Reçete satırı silinsin mi?">
+                                <input type="hidden" name="id" value={b.id} />
+                                <SubmitButton size="sm" variant="ghost">
+                                  <Trash2 aria-hidden />
+                                  <span className="sr-only">Sil: {line?.name ?? m?.name ?? "reçete satırı"}</span>
+                                </SubmitButton>
+                              </ActionForm>
+                            </td>
+                          ) : null}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {sim?.has_bom ? (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={3}>Tahmini reçete maliyeti (1 adet)</td>
+                        <td className="num">
+                          {fmtUnitMoney(sim.unit_cost_usd, "USD")}
+                          <div className="text-xs font-medium text-ink-muted">{fmtUnitMoney(sim.unit_cost_try, "TRY")}</div>
+                        </td>
+                        <td className="num">%100</td>
+                        {isAdmin ? <td /> : null}
+                      </tr>
+                    </tfoot>
+                  ) : null}
+                </table>
+              </TableWrap>
+              <ul className="divide-y divide-line sm:hidden">
+                {rows.map((b) => {
+                  const line = lineByMaterial.get(b.material_id);
+                  const m = materialById.get(b.material_id);
+                  const lineUsd = toNumber(line?.line_cost_usd);
+                  return (
+                    <li key={b.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0 text-[13px]">
+                        <div>
                           <span className="font-medium text-ink">{line?.name ?? m?.name ?? "—"}</span>{" "}
                           <span className="code text-ink-muted">{line?.code ?? m?.code}</span>
-                          <div className="text-xs text-ink-muted">
-                            {line ? (line.kind === "component" ? "Komponent" : "Hammadde") : null}
-                            {b.note ? ` · ${b.note}` : null}
-                          </div>
-                        </td>
-                        <td className="num">
-                          {fmtNum(b.entry_qty, 4)} {b.entry_unit}
-                          {line && line.base_unit !== b.entry_unit ? (
-                            <div className="text-xs text-ink-muted">
-                              = {fmtNum(b.qty_per_unit, 6)} {line.base_unit}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="num">
-                          {line && line.unit_cost_usd !== null ? `${fmtUnitMoney(line.unit_cost_usd, "USD")} / ${line.base_unit}` : "—"}
-                          {line?.cost_basis === "last_purchase" ? <div className="text-xs text-ink-muted">son alış (stok yok)</div> : null}
-                          {line?.cost_basis === "none" ? <div className="text-xs text-amber-700">maliyet yok</div> : null}
-                        </td>
-                        <td className="num">
-                          {fmtUnitMoney(line?.line_cost_usd, "USD")}
-                          <div className="text-xs text-ink-muted">{fmtUnitMoney(line?.line_cost_try, "TRY")}</div>
-                        </td>
-                        <td className="num">
-                          {lineUsd !== null && totalUsd > 0
-                            ? `%${((lineUsd / totalUsd) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}`
-                            : "—"}
-                        </td>
-                        {isAdmin ? (
-                          <td className="text-right">
-                            <ActionForm action={deleteBomItem} confirmMessage="Reçete satırı silinsin mi?">
-                              <input type="hidden" name="id" value={b.id} />
-                              <SubmitButton size="sm" variant="ghost">
-                                <Trash2 aria-hidden />
-                                <span className="sr-only">Sil: {line?.name ?? m?.name ?? "reçete satırı"}</span>
-                              </SubmitButton>
-                            </ActionForm>
-                          </td>
-                        ) : null}
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                        </div>
+                        <div className="mt-0.5 text-ink-soft tabular-nums">
+                          {fmtNum(b.entry_qty, 4)} {b.entry_unit} · {fmtUnitMoney(line?.line_cost_usd, "USD")}{" "}
+                          <span className="text-ink-muted">({fmtUnitMoney(line?.line_cost_try, "TRY")})</span>
+                        </div>
+                        <div className="text-xs text-ink-muted">
+                          {line && line.unit_cost_usd !== null ? `${fmtUnitMoney(line.unit_cost_usd, "USD")} / ${line.base_unit}` : "Maliyet yok"}
+                          {lineUsd !== null && totalUsd > 0 ? ` · pay %${((lineUsd / totalUsd) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}` : ""}
+                          {b.note ? ` · ${b.note}` : ""}
+                        </div>
+                      </div>
+                      {isAdmin ? (
+                        <ActionForm action={deleteBomItem} confirmMessage="Reçete satırı silinsin mi?">
+                          <input type="hidden" name="id" value={b.id} />
+                          <SubmitButton size="sm" variant="ghost">
+                            <Trash2 aria-hidden />
+                            <span className="sr-only">Sil: {line?.name ?? m?.name ?? "reçete satırı"}</span>
+                          </SubmitButton>
+                        </ActionForm>
+                      ) : null}
+                    </li>
+                  );
+                })}
                 {sim?.has_bom ? (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={3}>Tahmini reçete maliyeti (1 adet)</td>
-                      <td className="num">
-                        {fmtUnitMoney(sim.unit_cost_usd, "USD")}
-                        <div className="text-xs font-medium text-ink-muted">{fmtUnitMoney(sim.unit_cost_try, "TRY")}</div>
-                      </td>
-                      <td className="num">%100</td>
-                      {isAdmin ? <td /> : null}
-                    </tr>
-                  </tfoot>
+                  <li className="flex items-baseline justify-between gap-3 bg-canvas/60 px-4 py-2.5 text-[13px] font-semibold text-ink">
+                    <span>Tahmini reçete maliyeti</span>
+                    <span className="tabular-nums">
+                      {fmtUnitMoney(sim.unit_cost_usd, "USD")} <span className="text-xs font-medium text-ink-muted">({fmtUnitMoney(sim.unit_cost_try, "TRY")})</span>
+                    </span>
+                  </li>
                 ) : null}
-              </table>
-            </TableWrap>
+              </ul>
+            </>
           )}
 
           {isAdmin ? (
@@ -195,7 +240,7 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
         ) : null}
       </div>
 
-      <div className="grid min-w-0 content-start gap-4">
+      <div className="grid min-w-0 content-start items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
         <Card title="Tahmini reçete maliyeti" description="Güncel hareketli ağırlıklı ortalama malzeme maliyetiyle, 1 adet">
           {data.simError ? (
             <ErrorState message={data.simError} compact />

@@ -25,7 +25,7 @@ export function StockTableToolbar({
   total: number;
   statusOptions: { value: string; label: string }[];
   scopeOptions: { value: string; label: string }[];
-  /** xl altında (tablo başlıkları yokken) sıralama seçimi: "sütun:yon" */
+  /** Tablo gösterilmediğinde (tablo başlıkları yokken) sıralama seçimi: "sütun:yon" */
   sortOptions: { value: string; label: string }[];
   sortValue: string;
 }) {
@@ -106,7 +106,7 @@ export function StockTableToolbar({
           go({ sirala: sirala || null, yon: yon || null });
         }}
         aria-label="Sıralama"
-        className="input input-sm w-full pr-8 sm:w-auto sm:max-w-full xl:hidden"
+        className="input input-sm w-full pr-8 sm:w-auto sm:max-w-full @min-[1024px]:hidden"
       >
         {sortOptions.some((o) => o.value === sortValue) ? null : <option value="">Sırala</option>}
         {sortOptions.map((o) => (

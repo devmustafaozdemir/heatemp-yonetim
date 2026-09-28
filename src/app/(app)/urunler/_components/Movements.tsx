@@ -6,6 +6,7 @@ import type { AuthContext } from "@/lib/auth";
 import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { isoDateOrNull, type ListParams } from "@/lib/list-params";
 import { load } from "@/lib/query";
+import { redirectIfPageOutOfRange } from "./paging";
 import { TabToolbar } from "./TabToolbar";
 import type { MovementRow, MovementType } from "./types";
 
@@ -91,6 +92,7 @@ export async function StockMovementsCard({
       .range(lp.from, lp.to)
       .returns<MovementRow[]>(),
   );
+  redirectIfPageOutOfRange(res.error, lp, basePath, keep);
   const rows = res.data ?? [];
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath, values: { ...lp.values, ...keep } };
 
@@ -129,73 +131,115 @@ export async function StockMovementsCard({
             : "Bu kayıt için henüz üretim, teslimat veya satış hareketi yok."}
         </EmptyState>
       ) : (
-        <TableWrap>
-          <table className="table-base">
-            <thead>
-              <tr>
-                <SortTh label="Tarih" column="movement_date" {...sortProps} />
-                <th>Hareket türü</th>
-                <th>Raf</th>
-                {multi ? <th>Varyant</th> : null}
-                <SortTh label="Miktar (adet)" column="qty" align="right" {...sortProps} />
-                <th className="num">Birim maliyet</th>
-                <th className="num">Tutar (TL)</th>
-                <th>Belge</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const meta = movementMeta(r);
-                const variant = byId.get(r.variant_id);
-                const value = Number(r.qty) * Number(r.unit_cost_try);
-                return (
-                  <tr key={r.id}>
-                    <td className="whitespace-nowrap tabular-nums">{fmtDate(r.movement_date)}</td>
-                    <td>
+        <>
+          <TableWrap className="relative hidden sm:block">
+            <table className="table-base">
+              <thead>
+                <tr>
+                  <SortTh label="Tarih" column="movement_date" {...sortProps} />
+                  <th>Hareket türü</th>
+                  <SortTh label="Miktar (adet)" column="qty" align="right" {...sortProps} />
+                  <th>Raf</th>
+                  {multi ? <th>Varyant</th> : null}
+                  <th className="num">Birim maliyet</th>
+                  <th className="num">Tutar (TL)</th>
+                  <th>Belge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const meta = movementMeta(r);
+                  const variant = byId.get(r.variant_id);
+                  return (
+                    <tr key={r.id}>
+                      <td className="whitespace-nowrap tabular-nums">{fmtDate(r.movement_date)}</td>
+                      <td>
+                        <Badge tone={meta.tone} icon={meta.icon} title={meta.hint}>
+                          {meta.label}
+                        </Badge>
+                      </td>
+                      <td className={r.qty > 0 ? "num font-semibold text-emerald-700" : "num font-semibold text-red-600"}>{signedQty(r.qty)}</td>
+                      <td className="whitespace-nowrap">{LOCATION_LABEL[r.location]}</td>
+                      {multi ? (
+                        <td className="whitespace-nowrap">
+                          {variant?.name ?? "—"} <span className="code text-ink-muted">{variant?.code}</span>
+                        </td>
+                      ) : null}
+                      <td className="num">
+                        {fmtUnitMoney(r.unit_cost_usd, "USD")}
+                        <div className="text-xs text-ink-muted">{fmtUnitMoney(r.unit_cost_try, "TRY")}</div>
+                      </td>
+                      <td className="num">{fmtMoney(Number(r.qty) * Number(r.unit_cost_try), "TRY")}</td>
+                      <td className="whitespace-nowrap">
+                        <DocLinks row={r} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableWrap>
+
+          {/* Mobil: kompakt liste */}
+          <ul className="divide-y divide-line sm:hidden">
+            {rows.map((r) => {
+              const meta = movementMeta(r);
+              const variant = byId.get(r.variant_id);
+              return (
+                <li key={r.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[13px] text-ink tabular-nums">{fmtDate(r.movement_date)}</span>
                       <Badge tone={meta.tone} icon={meta.icon} title={meta.hint}>
                         {meta.label}
                       </Badge>
-                    </td>
-                    <td className="whitespace-nowrap">{LOCATION_LABEL[r.location]}</td>
-                    {multi ? (
-                      <td className="whitespace-nowrap">
-                        {variant?.name ?? "—"} <span className="code text-ink-muted">{variant?.code}</span>
-                      </td>
-                    ) : null}
-                    <td className={r.qty > 0 ? "num font-semibold text-emerald-700" : "num font-semibold text-red-600"}>
-                      {r.qty > 0 ? "+" : "−"}
-                      {fmtInt(Math.abs(r.qty))}
-                    </td>
-                    <td className="num">
-                      {fmtUnitMoney(r.unit_cost_usd, "USD")}
-                      <div className="text-xs text-ink-muted">{fmtUnitMoney(r.unit_cost_try, "TRY")}</div>
-                    </td>
-                    <td className="num">{fmtMoney(value, "TRY")}</td>
-                    <td className="whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5 text-xs">
-                        {r.sale_id && r.sales ? (
-                          <Link href={`/satislar/${r.sale_id}`} className="link">
-                            {r.sales.sale_no}
-                          </Link>
-                        ) : null}
-                        {r.deliveries ? <span className="code">{r.deliveries.delivery_no}</span> : null}
-                        {r.production_batches ? (
-                          <Link href={`/uretim/${r.batch_id}`} className={r.sale_id || r.deliveries ? "text-ink-muted hover:text-brand-600 hover:underline" : "link"}>
-                            {r.production_batches.batch_no}
-                          </Link>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableWrap>
+                    </div>
+                    <div className="mt-1 text-xs text-ink-muted">
+                      {LOCATION_LABEL[r.location]}
+                      {multi && variant ? ` · ${variant.name}` : ""} · {fmtUnitMoney(r.unit_cost_usd, "USD")}/adet
+                    </div>
+                    <div className="mt-0.5">
+                      <DocLinks row={r} inline />
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className={r.qty > 0 ? "text-[15px] font-semibold text-emerald-700 tabular-nums" : "text-[15px] font-semibold text-red-600 tabular-nums"}>
+                      {signedQty(r.qty)}
+                    </div>
+                    <div className="text-xs text-ink-muted tabular-nums">{fmtMoney(Number(r.qty) * Number(r.unit_cost_try), "TRY")}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
       {res.count ? (
         <Pagination basePath={basePath} values={{ ...lp.values, ...keep }} page={lp.page} pageSize={lp.pageSize} total={res.count} noun="hareket" />
       ) : null}
     </Card>
+  );
+}
+
+function signedQty(qty: number) {
+  return `${qty > 0 ? "+" : "−"}${fmtInt(Math.abs(qty))}`;
+}
+
+/** Hareketin belgeleri: satış, teslimat ve parti numarası. */
+function DocLinks({ row: r, inline = false }: { row: MovementRow; inline?: boolean }) {
+  return (
+    <div className={inline ? "flex flex-wrap gap-x-2 gap-y-0.5 text-xs" : "flex flex-col gap-0.5 text-xs"}>
+      {r.sale_id && r.sales ? (
+        <Link href={`/satislar/${r.sale_id}`} className="link">
+          {r.sales.sale_no}
+        </Link>
+      ) : null}
+      {r.deliveries ? <span className="code">{r.deliveries.delivery_no}</span> : null}
+      {r.production_batches ? (
+        <Link href={`/uretim/${r.batch_id}`} className={r.sale_id || r.deliveries ? "text-ink-muted hover:text-brand-600 hover:underline" : "link"}>
+          {r.production_batches.batch_no}
+        </Link>
+      ) : null}
+    </div>
   );
 }

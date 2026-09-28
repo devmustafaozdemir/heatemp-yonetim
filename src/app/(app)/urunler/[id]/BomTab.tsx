@@ -39,7 +39,7 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
           {withBom.map((v) => {
             const r = simById.get(v.id);
             const sim = r?.sim ?? null;
-            const href = `/urunler/${product.id}/varyant/${v.id}?sekme=bom`;
+            const href = `/urunler/${product.id}/varyant/${v.id}`;
             return (
               <Card
                 key={v.id}
@@ -144,7 +144,7 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
                     </span>
                   ) : null}
                 </div>
-                <ButtonLink href={`/urunler/${product.id}/varyant/${v.id}?sekme=bom`} size="sm" variant={isAdmin ? "soft" : "secondary"}>
+                <ButtonLink href={`/urunler/${product.id}/varyant/${v.id}`} size="sm" variant={isAdmin ? "soft" : "secondary"}>
                   {isAdmin ? <Plus aria-hidden /> : null}
                   {isAdmin ? "Reçete tanımla" : "Varyantı aç"}
                 </ButtonLink>
