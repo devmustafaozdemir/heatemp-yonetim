@@ -75,7 +75,7 @@ export default async function VariantPage({
         }
         crumbs={[
           { label: effective.product_code, href: `/urunler/${id}` },
-          { label: effective.variant_code },
+          { label: effective.variant_name },
         ]}
         meta={
           <>

@@ -66,8 +66,9 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                 <thead>
                   <tr>
                     <th>Malzeme</th>
-                    <th className="num">Girilen</th>
-                    <th className="num">Temel birimde</th>
+                    <th className="num" title="Girilen miktar; altında temel birimdeki karşılığı">
+                      Miktar (1 adet)
+                    </th>
                     <th className="num">Birim maliyet (USD)</th>
                     <th className="num">Satır maliyeti</th>
                     <th className="num" title="Tahmini reçete maliyeti içindeki pay">
@@ -93,9 +94,11 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                         </td>
                         <td className="num">
                           {fmtNum(b.entry_qty, 4)} {b.entry_unit}
-                        </td>
-                        <td className="num">
-                          {fmtNum(b.qty_per_unit, 6)} {line?.base_unit ?? ""}
+                          {line && line.base_unit !== b.entry_unit ? (
+                            <div className="text-xs text-ink-muted">
+                              = {fmtNum(b.qty_per_unit, 6)} {line.base_unit}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="num">
                           {line && line.unit_cost_usd !== null ? `${fmtUnitMoney(line.unit_cost_usd, "USD")} / ${line.base_unit}` : "—"}
@@ -117,7 +120,7 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                               <input type="hidden" name="id" value={b.id} />
                               <SubmitButton size="sm" variant="ghost">
                                 <Trash2 aria-hidden />
-                                Sil
+                                <span className="sr-only">Sil: {line?.name ?? m?.name ?? "reçete satırı"}</span>
                               </SubmitButton>
                             </ActionForm>
                           </td>
@@ -129,7 +132,7 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                 {sim?.has_bom ? (
                   <tfoot>
                     <tr>
-                      <td colSpan={4}>Tahmini reçete maliyeti (1 adet)</td>
+                      <td colSpan={3}>Tahmini reçete maliyeti (1 adet)</td>
                       <td className="num">
                         {fmtUnitMoney(sim.unit_cost_usd, "USD")}
                         <div className="text-xs font-medium text-ink-muted">{fmtUnitMoney(sim.unit_cost_try, "TRY")}</div>

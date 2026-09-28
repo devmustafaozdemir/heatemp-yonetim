@@ -186,7 +186,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       };
 
   const tableRows = overviewRes.error ? [] : filterStockRows(overview, values, lp.sort, lp.dir);
-  const pageRows = tableRows.slice(lp.from, lp.to + 1);
+  // URL'deki sayfa sonuç sayısını aşarsa son sayfa gösterilir (boş tablo yerine).
+  const lastPage = Math.max(1, Math.ceil(tableRows.length / lp.pageSize));
+  const tablePage = Math.min(lp.page, lastPage);
+  const tableLp = { ...lp, page: tablePage, from: (tablePage - 1) * lp.pageSize, to: tablePage * lp.pageSize - 1 };
+  const pageRows = tableRows.slice(tableLp.from, tableLp.to + 1);
 
   // Dönem ve görünüm bağlantıları tablo filtrelerini korur; tablo bağlantıları dönemi korur.
   const periodValues = Object.fromEntries(Object.entries(values).filter(([k]) => !(STOCK_TABLE_KEYS as readonly string[]).includes(k)));
@@ -483,7 +487,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* 5) Ana stok tablosu */}
-      <StockTable error={overviewRes.error} rows={tableRows} pageRows={pageRows} lp={lp} opening={opening} />
+      <StockTable error={overviewRes.error} rows={tableRows} pageRows={pageRows} lp={tableLp} opening={opening} />
     </>
   );
 }
