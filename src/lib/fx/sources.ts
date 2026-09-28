@@ -98,7 +98,7 @@ function previousDay(date: string, days = 1): string {
 export async function fetchTcmb(
   date: string | null,
   rateType: TcmbRateType,
-  { fetcher = fetch, timeoutMs = 6000, lookbackDays = 7 }: { fetcher?: Fetcher; timeoutMs?: number; lookbackDays?: number } = {},
+  { fetcher = fetch, timeoutMs = 5000, lookbackDays = 7 }: { fetcher?: Fetcher; timeoutMs?: number; lookbackDays?: number } = {},
 ): Promise<FetchedRate> {
   if (!date) {
     return parseTcmbXml(await fetchText(fetcher, tcmbUrl(null), timeoutMs), rateType);
@@ -118,7 +118,7 @@ export async function fetchTcmb(
 
 export async function fetchFrankfurter(
   date: string | null,
-  { fetcher = fetch, timeoutMs = 6000 }: { fetcher?: Fetcher; timeoutMs?: number } = {},
+  { fetcher = fetch, timeoutMs = 5000 }: { fetcher?: Fetcher; timeoutMs?: number } = {},
 ): Promise<FetchedRate> {
   const res = await fetcher(frankfurterUrl(date), { signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
   if (!res.ok) throw new FxSourceError(`Frankfurter ${res.status} yanıtı verdi.`);

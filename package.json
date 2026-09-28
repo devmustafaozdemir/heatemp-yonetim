@@ -11,7 +11,10 @@
     "test": "vitest run --project unit",
     "test:db": "vitest run --project db",
     "test:db:docker": "bash scripts/db-test.sh",
-    "excel:incele": "tsx scripts/excel-incele.ts"
+    "excel:incele": "tsx scripts/excel-incele.ts",
+    "test:e2e": "node tests/e2e/arayuz-akisi.cjs",
+    "dev:stack": "bash scripts/dev-stack/up.sh",
+    "dev:stack:down": "bash scripts/dev-stack/down.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

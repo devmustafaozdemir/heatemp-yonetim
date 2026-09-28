@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +40,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/test-results
+
+# Referans iş dosyaları (Excel/PDF) gerçek ticari veri içerebilir; depoya eklenmez.
+/referans/*
+!/referans/README.md
+
+# Supabase CLI yerel dosyaları
+supabase/.branches
+supabase/.temp

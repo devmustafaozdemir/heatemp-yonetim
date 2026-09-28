@@ -204,9 +204,10 @@ export function Muted({ children }: { children: ReactNode }) {
   return <span className="text-xs text-slate-500">{children}</span>;
 }
 
-export function DefinitionList({ items }: { items: [ReactNode, ReactNode][] }) {
+export function DefinitionList({ items, columns = 2 }: { items: [ReactNode, ReactNode][]; columns?: 1 | 2 | 3 }) {
+  const cols = { 1: "", 2: "sm:grid-cols-2", 3: "sm:grid-cols-2 2xl:grid-cols-3" }[columns];
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+    <dl className={cx("grid grid-cols-1 gap-x-6 gap-y-2 text-sm", cols)}>
       {items.map(([k, v], i) => (
         <div key={i} className="flex justify-between gap-3 border-b border-slate-100 py-1">
           <dt className="text-slate-500">{k}</dt>

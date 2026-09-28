@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui";
 import type { BatchStatus } from "@/lib/types";
 
-export function BatchStatusBadge({ status }: { status: BatchStatus }) {
+export function BatchStatusBadge({ status, kind }: { status: BatchStatus; kind?: "production" | "opening" }) {
+  if (kind === "opening") return <Badge tone="blue">Açılış stoğu</Badge>;
   if (status === "completed") return <Badge tone="green">Tamamlandı</Badge>;
   if (status === "cancelled") return <Badge tone="gray">İptal</Badge>;
   return <Badge tone="amber">Üretimde</Badge>;

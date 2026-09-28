@@ -1,25 +1,15 @@
 -- =====================================================================
--- Heatemp ERP — 8/8 Ürün görselleri (Supabase Storage)
--- Görseller herkese açık bir kovada tutulur (yalnızca ürün fotoğrafı içindir);
--- yükleme, değiştirme ve silme yalnızca yöneticiye açıktır.
+-- Heatemp ERP — 8/9 Ürün görselleri (Supabase Storage)
+-- Görseller ÖZEL bir kovada tutulur. Uygulama görseli oturum sahibinin
+-- yetkisiyle sunucu tarafında okur (/urun-gorseli/... rotası); okuma yalnızca
+-- uygulama üyelerine, yükleme/değiştirme/silme yalnızca yöneticiye açıktır.
 -- =====================================================================
 
--- storage.buckets.public sütunu Storage servisinin kendi migration'larıyla gelir;
--- yalnızca veritabanı içeren test ortamlarında bu sütun olmayabilir.
-do $$
-begin
-  if exists (select 1 from information_schema.columns
-              where table_schema = 'storage' and table_name = 'buckets' and column_name = 'public') then
-    insert into storage.buckets (id, name, public)
-    values ('product-images', 'product-images', true)
-    on conflict (id) do nothing;
-  else
-    insert into storage.buckets (id, name)
-    values ('product-images', 'product-images')
-    on conflict (id) do nothing;
-  end if;
-end
-$$;
+-- "public" sütunu Storage servisinin kendi migration'larıyla eklenir ve
+-- varsayılanı false'tur; bu yüzden yalnızca kimlik ve ad yazılır.
+insert into storage.buckets (id, name)
+values ('product-images', 'product-images')
+on conflict (id) do nothing;
 
 create policy "urun_gorselleri_okuma" on storage.objects
   for select to authenticated

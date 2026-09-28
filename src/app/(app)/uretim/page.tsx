@@ -80,7 +80,7 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
                     </td>
                     <td className="num">{fmtInt(b.quantity)}</td>
                     <td>
-                      <BatchStatusBadge status={b.status} />
+                      <BatchStatusBadge status={b.status} kind={b.kind} />
                     </td>
                     <td className="whitespace-nowrap text-xs">{fmtDateTime(b.started_at)}</td>
                     <td className="whitespace-nowrap text-xs">{fmtDateTime(b.completed_at ?? b.cancelled_at)}</td>

@@ -206,6 +206,7 @@ export interface BatchView {
   unit_cost_usd_change_pct: number | null;
   unit_cost_try_change_pct: number | null;
   heatemp_remaining: number | null;
+  kind: "production" | "opening";
 }
 
 export interface BatchConsumption {
@@ -404,6 +405,8 @@ export interface VariantOverview {
   prev_unit_cost_try: number | null;
   unit_cost_usd_change_pct: number | null;
   unit_cost_try_change_pct: number | null;
+  opening_qty: number;
+  opening_value_try: number;
 }
 
 export interface FinancialSummary {
@@ -430,6 +433,7 @@ export interface FinancialSummary {
   heatemp_qty: number;
   mekonsis_qty: number;
   in_production_qty: number;
+  opening_value_try: number;
 }
 
 export interface SalesPeriodRow {

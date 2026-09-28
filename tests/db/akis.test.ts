@@ -538,13 +538,68 @@ describe("Kurumsal teklif", () => {
   });
 });
 
+describe("Açılış stoğu (sistem öncesi mamul)", () => {
+  it("açılış partisi hammadde tüketmez, üretim sayılmaz ve FIFO'da önce tüketilir", async () => {
+    const f = await setupProduct(admin);
+    await stockMaterials(f);
+    const today = await todayTr();
+    await expectError(
+      rpc(admin, "record_opening_stock", {
+        p_variant_id: f.variantId,
+        p_quantity: 30,
+        p_unit_cost: 3,
+        p_currency: "USD",
+        p_fx_rate_id: f.fxId,
+        p_stock_date: today,
+      }),
+      /kaynak\/açıklama yazılmalıdır/,
+    );
+    const openingId = await rpc<string>(admin, "record_opening_stock", {
+      p_variant_id: f.variantId,
+      p_quantity: 30,
+      p_unit_cost: 3,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+      p_stock_date: today,
+      p_note: "Excel sayımı",
+    });
+    const [ob] = await sql("select batch_no, kind, unit_cost_try from public.production_batches where id = $1", [openingId]);
+    expect(ob.batch_no).toMatch(/^ACL-/);
+    expect(ob.kind).toBe("opening");
+    expect(Number(ob.unit_cost_try)).toBe(120);
+    const [tel] = await sql("select qty from public.material_balances where material_id = $1", [f.materials[0].id]);
+    expect(Number(tel.qty)).toBe(30000); // hammadde tüketilmedi
+
+    await produce(f, 20); // 180 TL/adet
+    await rpc(admin, "deliver_to_mekonsis", { p_variant_id: f.variantId, p_quantity: 50 });
+    const saleId = await rpc<string>(admin, "record_sale", {
+      p_sold_on: today,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+      p_items: [{ variant_id: f.variantId, quantity: 40, unit_price: 50 }],
+    });
+    const allocs = await sql("select batch_id, quantity from public.sale_allocations where sale_id = $1 order by id", [saleId]);
+    expect(allocs[0]).toEqual({ batch_id: openingId, quantity: 30 });
+    expect(allocs[1].quantity).toBe(10);
+    const [sale] = await sql("select cogs_try from public.sales where id = $1", [saleId]);
+    expect(Number(sale.cogs_try)).toBeCloseTo(30 * 120 + 10 * 180, 4);
+
+    const [o] = await sql("select produced_qty, opening_qty, opening_value_try, production_spend_try, unit_cost_usd_change_pct from public.v_variant_overview where variant_id = $1", [f.variantId]);
+    expect(o.produced_qty).toBe(20);
+    expect(o.opening_qty).toBe(30);
+    expect(Number(o.opening_value_try)).toBe(3600);
+    expect(Number(o.production_spend_try)).toBeCloseTo(3600, 4); // yalnızca 20 × 180
+    expect(o.unit_cost_usd_change_pct).toBeNull(); // açılış partisiyle kıyaslanmaz
+  });
+});
+
 describe("Tutarlılık", () => {
   it("defter bakiyeleri hareketlerle tutarlı; Kasa mutabakatı sağlanır", async () => {
     const rows = await query(admin, "select * from public.ledger_inconsistencies()");
     expect(rows).toEqual([]);
 
     const [k] = await query(admin, "select * from public.v_financial_summary");
-    const spend = Number(k.production_spend_try);
+    const spend = Number(k.production_spend_try) + Number(k.opening_value_try);
     const accounted =
       Number(k.cogs_try) + Number(k.heatemp_value_try) + Number(k.mekonsis_value_try) + Number(k.wip_value_try);
     expect(Math.abs(spend - accounted)).toBeLessThan(0.05);

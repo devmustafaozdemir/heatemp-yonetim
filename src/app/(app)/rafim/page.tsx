@@ -5,6 +5,7 @@ import { requireMember } from "@/lib/auth";
 import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney, todayTr } from "@/lib/format";
 import type { HeatempShelfRow } from "@/lib/types";
 import { DeliverForm, type DeliverOption } from "./DeliverForm";
+import { OpeningStockForm } from "./OpeningStockForm";
 
 export const metadata: Metadata = { title: "Rafım (Heatemp)" };
 
@@ -20,6 +21,11 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
     .returns<HeatempShelfRow[]>();
   if (error) throw new Error("Raf bilgisi yüklenemedi.");
   const rows = data ?? [];
+  const { data: allVariants } = await ctx.supabase
+    .from("v_variants")
+    .select("id, display_name")
+    .eq("is_active", true)
+    .order("display_name");
 
   const byVariant = new Map<string, { name: string; rows: HeatempShelfRow[] }>();
   for (const r of rows) {
@@ -58,6 +64,22 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
             <DeliverForm options={options} today={todayTr()} initialVariant={varyant} />
           )}
         </Card>
+      ) : null}
+
+      {ctx.role === "admin" ? (
+        <details className="mb-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">
+            Açılış stoğu (sistem öncesi üretilmiş mamul)
+          </summary>
+          <div className="border-t border-slate-100 p-4">
+            <p className="mb-3 text-sm text-slate-600">
+              Uygulamaya geçerken eldeki mamulü gerçek birim maliyetiyle bir kez girin. Hammadde tüketmez, üretim sayılmaz ve
+              maliyet karşılaştırmasına katılmaz. Mekonsis&apos;te duran mevcut stok için önce burada açılış girip ardından aynı
+              tarihli teslimat kaydedin. Excel&apos;den otomatik aktarım yapılmaz.
+            </p>
+            <OpeningStockForm variants={allVariants ?? []} today={todayTr()} />
+          </div>
+        </details>
       ) : null}
 
       {rows.length === 0 ? (

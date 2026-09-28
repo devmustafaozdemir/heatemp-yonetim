@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { ActionForm, FormField, SubmitButton } from "@/components/forms";
 import { Alert, Card, DefinitionList, Muted, PageHeader, TableWrap } from "@/components/ui";
 import { requireMember } from "@/lib/auth";
-import { fmtDateTime, fmtInt, fmtMinutes, fmtMoney, fmtPct, fmtQty, fmtRate, fmtUnitMoney } from "@/lib/format";
+import { fxSourceLabel } from "@/components/FxBadge";
+import { fmtDate, fmtDateTime, fmtInt, fmtMinutes, fmtMoney, fmtPct, fmtQty, fmtRate, fmtUnitMoney } from "@/lib/format";
 import type { BatchConsumption, BatchView } from "@/lib/types";
 import { cancelProduction, completeProduction } from "../actions";
 import { BatchStatusBadge, CostChange } from "../StatusBadge";
@@ -28,7 +29,7 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
         back={{ href: "/uretim", label: "Üretim ve partiler" }}
         title={
           <span className="flex items-center gap-2">
-            <span className="font-mono">{batch.batch_no}</span> <BatchStatusBadge status={batch.status} />
+            <span className="font-mono">{batch.batch_no}</span> <BatchStatusBadge status={batch.status} kind={batch.kind} />
           </span>
         }
         description={`${batch.product_name} — ${batch.variant_name} (${fmtMoney(batch.current_sale_price, batch.current_currency)})`}
@@ -48,7 +49,10 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
               ["Toplam maliyet (USD)", fmtMoney(batch.total_cost_usd, "USD")],
               ["Birim maliyet (USD)", fmtUnitMoney(batch.unit_cost_usd, "USD")],
               ["Birim maliyet (TL)", fmtUnitMoney(batch.unit_cost_try, "TRY")],
-              ["Başlangıç kuru", `${fmtRate(batch.fx_rate)} (${fx?.source ?? ""} ${fx?.rate_date ?? ""})`],
+              [
+                batch.kind === "opening" ? "Açılış kuru" : "Başlangıç kuru",
+                fx ? `${fmtRate(batch.fx_rate)} — ${fxSourceLabel(fx.source, fx.rate_type)}, ${fmtDate(fx.rate_date)}` : fmtRate(batch.fx_rate),
+              ],
               ["Başlangıçtaki satış fiyatı", fmtMoney(batch.sale_price_snapshot, batch.sale_currency_snapshot ?? "USD")],
               ["Heatemp rafında kalan", batch.heatemp_remaining !== null ? `${fmtInt(batch.heatemp_remaining)} adet` : "—"],
             ]}
@@ -63,6 +67,7 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
               <p className="text-sm text-slate-500">Karşılaştırma yalnızca tamamlanan partiler arasında yapılır.</p>
             ) : batch.prev_batch_no ? (
               <DefinitionList
+                columns={1}
                 items={[
                   ["Önceki parti", batch.prev_batch_no],
                   ["Önceki birim (USD)", fmtUnitMoney(batch.prev_unit_cost_usd, "USD")],

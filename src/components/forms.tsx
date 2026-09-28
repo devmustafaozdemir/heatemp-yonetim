@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { createContext, use, useRef, useState, useTransition, type ReactNode } from "react";
+import { notifySuccess } from "@/components/Toaster";
 import { Alert, Button, cx } from "@/components/ui";
 import { initialActionState, type ActionState } from "@/lib/form";
 
@@ -53,8 +54,11 @@ export function ActionForm({
       } catch {
         next = { ok: false, message: "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin." };
       }
-      setResult(next);
+      // Başarı mesajı kalıcı bildirim alanında gösterilir: işlem sonrası yenilenen
+      // sayfada bu form kaldırılsa bile kullanıcı sonucu görür. Hatalar formun yanında kalır.
+      setResult(next.ok ? { ...next, message: null } : next);
       if (next.ok) {
+        if (showSuccess && next.message) notifySuccess(next.message);
         setRequestId(newRequestId());
         if (resetOnSuccess) formRef.current?.reset();
         onSuccess?.(next);
@@ -69,9 +73,9 @@ export function ActionForm({
       <FormState value={{ pending, fieldErrors: result.fieldErrors ?? {} }}>
         {typeof children === "function" ? children({ pending, result }) : children}
       </FormState>
-      {result.message && (!result.ok || showSuccess) ? (
+      {result.message && !result.ok ? (
         <div className="mt-3">
-          <Alert tone={result.ok ? "success" : "error"}>{result.message}</Alert>
+          <Alert tone="error">{result.message}</Alert>
         </div>
       ) : null}
     </form>

@@ -88,26 +88,26 @@ export default async function DashboardPage() {
                 <tr>
                   <th>Ürün</th>
                   <th>Kod</th>
-                  <th className="num">Tamamlanan üretim</th>
-                  <th className="num">Mekonsis&apos;in sattığı</th>
+                  <th className="num" title="Tamamlanan toplam üretim">Üretilen</th>
+                  <th className="num" title="Mekonsis'in sattığı adet">Satılan</th>
                   <th className="num">Heatemp rafı</th>
                   <th className="num">Mekonsis rafı</th>
                   <th className="num">Toplam kalan</th>
                   <th>Stok durumu</th>
-                  <th className="num">Son parti birim maliyeti</th>
-                  <th className="num">Önceki partiye göre</th>
+                  <th className="num" title="Son tamamlanan partinin birim maliyeti">Son birim maliyet</th>
+                  <th className="num" title="Son iki tamamlanmış parti arasındaki USD birim maliyet değişimi">Maliyet değişimi</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.variant_id}>
-                    <td>
+                    <td className="min-w-48">
                       <Link href={`/urunler/${r.product_id}`} className="link font-medium">
                         {r.product_name}
                       </Link>
                       <div className="text-xs text-slate-500">{r.variant_name}</div>
                     </td>
-                    <td className="font-mono text-xs">{r.variant_code}</td>
+                    <td className="font-mono text-xs whitespace-nowrap">{r.variant_code}</td>
                     <td className="num">{fmtInt(r.produced_qty)}</td>
                     <td className="num">{fmtInt(r.sold_qty)}</td>
                     <td className="num">{fmtInt(r.heatemp_qty)}</td>

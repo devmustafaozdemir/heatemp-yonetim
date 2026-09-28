@@ -1,4 +1,5 @@
 import "server-only";
+import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { AuthContext } from "@/lib/auth";
 import { fetchFrankfurter, fetchTcmb, type FetchedRate, type TcmbRateType } from "@/lib/fx/sources";
@@ -68,25 +69,21 @@ export interface RefreshResult {
   message: string;
 }
 
-// Aynı sunucu örneğinde başarısız denemeleri sık tekrarlamamak için.
+const NO_SERVICE_KEY =
+  "Otomatik kur kaydı için sunucuda SUPABASE_SERVICE_ROLE_KEY tanımlı değil. Yönetici manuel kur girebilir.";
+
+// Aynı sunucu örneğinde başarısız denemeleri sık tekrarlamamak ve son hatayı göstermek için.
 const lastAttempt = new Map<string, number>();
+let lastBackgroundError: string | null = null;
 
 /**
- * Otomatik kuru sunucu tarafında alır ve service role ile kaydeder.
- * Service role anahtarı yoksa veya servisler erişilemezse açık bir mesaj döner;
- * hiçbir durumda sabit/uydurma kur kullanılmaz.
+ * Kuru servislerden alıp service role ile kaydeder. İstek çerezlerine
+ * dokunmaz; bu yüzden yanıt sonrasında (after) da çalışabilir.
  */
-export async function refreshFx(ctx: AuthContext, date: string | null, { force = false } = {}): Promise<RefreshResult> {
+async function fetchAndStore(settings: FxSettings, date: string | null, force: boolean): Promise<RefreshResult> {
   const service = createServiceClient();
-  if (!service) {
-    return {
-      ok: false,
-      message:
-        "Otomatik kur kaydı için sunucuda SUPABASE_SERVICE_ROLE_KEY tanımlı değil. Yönetici manuel kur girebilir.",
-    };
-  }
+  if (!service) return { ok: false, message: NO_SERVICE_KEY };
   const key = date ?? "today";
-  const settings = await getFxSettings(ctx);
   const now = Date.now();
   if (!force && now - (lastAttempt.get(key) ?? 0) < 5 * 60_000) {
     return { ok: false, message: "Kur servisi kısa süre önce denendi." };
@@ -94,9 +91,7 @@ export async function refreshFx(ctx: AuthContext, date: string | null, { force =
   lastAttempt.set(key, now);
 
   const { rate, errors } = await fetchFromSources(settings, date);
-  if (!rate) {
-    return { ok: false, message: `Otomatik kur alınamadı (${errors.join("; ")}).` };
-  }
+  if (!rate) return { ok: false, message: `Otomatik kur alınamadı (${errors.join("; ")}).` };
   const { error } = await service.rpc("record_auto_fx_rate", {
     p_source: rate.source,
     p_rate_type: rate.rateType,
@@ -110,8 +105,20 @@ export async function refreshFx(ctx: AuthContext, date: string | null, { force =
 }
 
 /**
+ * Otomatik kuru sunucu tarafında alır ve kaydeder (kullanıcının açık isteğiyle).
+ * Service role anahtarı yoksa veya servisler erişilemezse açık bir mesaj döner;
+ * hiçbir durumda sabit/uydurma kur kullanılmaz.
+ */
+export async function refreshFx(ctx: AuthContext, date: string | null, { force = false } = {}): Promise<RefreshResult> {
+  const settings = await getFxSettings(ctx);
+  const result = await fetchAndStore(settings, date, force);
+  if (date === null) lastBackgroundError = result.ok ? null : result.message;
+  return result;
+}
+
+/**
  * Sayfa yüklenirken çağrılır: son otomatik kontrol ayarlanan süreden eskiyse
- * bugünün kurunu almayı dener. Hata sayfayı durdurmaz.
+ * bugünün kurunu yanıt gönderildikten SONRA almayı planlar (sayfayı bekletmez).
  */
 export async function ensureFreshFx(ctx: AuthContext): Promise<{ suggestion: FxSuggestion | null; warning: string | null }> {
   let warning: string | null = null;
@@ -126,8 +133,16 @@ export async function ensureFreshFx(ctx: AuthContext): Promise<{ suggestion: FxS
       .maybeSingle();
     const last = data?.last_checked_at ? new Date(data.last_checked_at).getTime() : 0;
     if (Date.now() - last > settings.fx_refresh_minutes * 60_000) {
-      const r = await refreshFx(ctx, null);
-      if (!r.ok && !r.message.includes("kısa süre önce")) warning = r.message;
+      if (!createServiceClient()) {
+        warning = NO_SERVICE_KEY;
+      } else {
+        after(async () => {
+          const r = await fetchAndStore(settings, null, false);
+          if (r.ok) lastBackgroundError = null;
+          else if (!r.message.includes("kısa süre önce")) lastBackgroundError = r.message;
+        });
+        warning = lastBackgroundError;
+      }
     }
   } catch (err) {
     warning = err instanceof Error ? err.message : String(err);

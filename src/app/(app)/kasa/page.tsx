@@ -22,7 +22,8 @@ export default async function CashPage() {
   const showUsd = settings?.show_usd_info ?? true;
   const list = (rows ?? []).filter((r) => r.produced_qty > 0 || r.sold_qty > 0 || r.in_production_qty > 0);
   const accounted = Number(s.cogs_try) + Number(s.finished_value_try) + Number(s.wip_value_try);
-  const diff = Number(s.production_spend_try) - accounted;
+  const opening = Number(s.opening_value_try);
+  const diff = Number(s.production_spend_try) + opening - accounted;
 
   return (
     <>
@@ -59,7 +60,8 @@ export default async function CashPage() {
         <Stat label="Hammadde stok değeri" value={fmtMoney(s.material_value_try, "TRY")} hint="Monte edilmemiş komponentler dahil" />
       </div>
       <p className="mb-6 text-xs text-slate-500">
-        Mutabakat: üretime harcanan {fmtMoney(s.production_spend_try, "TRY")} = satılan ürün maliyeti {fmtMoney(s.cogs_try, "TRY")} +
+        Mutabakat: üretime harcanan {fmtMoney(s.production_spend_try, "TRY")}
+        {opening > 0 ? ` + açılış stoğu ${fmtMoney(opening, "TRY")}` : ""} = satılan ürün maliyeti {fmtMoney(s.cogs_try, "TRY")} +
         mamul stok {fmtMoney(s.finished_value_try, "TRY")} + üretimdeki partiler {fmtMoney(s.wip_value_try, "TRY")}
         {Math.abs(diff) >= 0.01 ? ` (yuvarlama farkı ${fmtMoney(diff, "TRY")})` : ""}.
       </p>
@@ -91,7 +93,7 @@ export default async function CashPage() {
               ) : (
                 list.map((r) => (
                   <tr key={r.variant_id}>
-                    <td>
+                    <td className="min-w-48">
                       <div className="font-medium">{r.product_name}</div>
                       <div className="text-xs text-slate-500">{r.variant_name}</div>
                     </td>

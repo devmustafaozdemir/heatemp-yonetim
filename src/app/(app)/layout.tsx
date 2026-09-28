@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { FxBadge } from "@/components/FxBadge";
+import { Toaster } from "@/components/Toaster";
 import { requireMember } from "@/lib/auth";
 import { ensureFreshFx } from "@/lib/fx/service";
 import { signOut } from "@/app/giris/actions";
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </header>
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-6">{children}</main>
       </div>
+      <Toaster />
     </div>
   );
 }

@@ -55,6 +55,7 @@ export default async function VariantPage({ params }: { params: Promise<{ id: st
           {simulation?.has_bom ? (
             <>
               <DefinitionList
+                columns={1}
                 items={[
                   ["Malzeme maliyeti (USD)", fmtUnitMoney(simulation.unit_cost_usd, "USD")],
                   ["TL karşılığı (kayıt değeri)", fmtUnitMoney(simulation.unit_cost_try, "TRY")],
