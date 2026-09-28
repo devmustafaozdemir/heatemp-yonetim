@@ -1,64 +1,55 @@
-# Excel alan eşleştirme notu
+# Excel alan eşleştirme notu — `Mekonsis_Heatamp_Stok_Takip (1).xlsx`
 
-## Durum
+Dosya 6 sayfadan oluşur. Aktarım paketi `scripts/excel-aktarim.ts` ile **salt okunur** üretilir; ayrıntılı
+rapor, sayılar ve SQL `import/excel-aktarim/` altındadır (git dışında, gerçek ticari veri içerir).
 
-`Mekonsis_Heatamp_Stok_Takip (1).xlsx` ve `Heatemp_Mekonsis_ERP_Yol_Haritasi.pdf` bu çalışma sırasında
-depoda veya çalışma ortamında **bulunamadı**; bu yüzden Excel'in gerçek sayfa/sütun adları ve ürün listesi
-incelenemedi. Tahmini sütun adı veya ürün uydurulmadı.
+## Sayfa → ERP eşleştirmesi
 
-Yerine şunlar hazırlandı:
+| Sayfa | Alanlar | ERP karşılığı | Karar |
+|---|---|---|---|
+| Ürünler | Ürün grubu başlıkları, ürün kodları (49) | `products`, `product_variants` | Aktarılır |
+| Stok Özeti | Ürün adı, kod, toplam giren (Mekonsis rafı), satış, kalan, durum eşikleri | Eşikler → `critical/min/target_stock`; kalan → doğrulama | Eşikler aktarılır; toplamlar detaydan yeniden hesaplanıp karşılaştırılır |
+| Teslimat Detayı | Ürün, kod, teslim tarihi, adet | (Mekonsis'e teslimat geçmişi) | Stok defterine tek tek girmez; net kalan hesabında kullanılır, CSV arşivi |
+| Satış Detayı | Ürün, kod, satış tarihi, adet, fatura no | (Mekonsis satış geçmişi) | **Fiyat yok** → satış/ciro olarak girmez; net kalan hesabında kullanılır, CSV arşivi |
+| Satış Fiyatları | Ürün tipi, maliyet (USD), satış (USD) | Satış → `default_sale_price` (USD) / varyant fiyatı | Satış fiyatları aktarılır; maliyet yalnızca açılış maliyeti adayıdır |
+| Satış Fiyatları (simülasyonlar, 3'e bölüşüm, Mekonsis referansları) | Senaryo ve referans rakamlar | — | Aktarılmaz |
+| Ürün Maliyet | Ürün tipine göre TL/USD maliyet dökümleri | (hammadde/BOM için yetersiz) | Aktarılmaz; raporda listelenir |
 
-1. `scripts/excel-incele.ts` — Excel'i **salt okunur** açar, her sayfanın başlık satırını bulur, sütunları,
-   değer türlerini ve örnek değerleri listeler, başlıkları aşağıdaki hedef alanlara sezgisel olarak eşler ve
-   benzersiz ürün satırlarını çıkarır. Sonucu `docs/excel-inceleme-sonucu.md` dosyasına yazar.
-   Veritabanına bağlanmaz, hiçbir kayıt oluşturmaz.
-2. Aşağıdaki hedef alan sözlüğü ve aktarım ilkeleri.
+## Ürün / varyant modeli
+
+- Excel **ürün kodu = ERP varyant kodu** (aynen korunur).
+- Ürün (grup) kodu, SKU'dan sensör elemanı çıkarılarak türetilir:
+  `HT-NTC10K-K-50mm` → ürün `HT-K-50mm` "Kablo Tipi Sıcaklık Sensörü - 50mm", varyant "NTC10K".
+  Mahal tipi `HT-MT-M`/`HT-MT-P`, su kaçak `HT-SKS`, çoklama kartı `HT-FCM`, kovan `HT-KV`.
+- Kalıba uymayan kodlar (Redüksiyonlar) kendi kodlarıyla tek varyantlı ürün olur.
+- Sonuç: 19 ürün, 51 varyant (49 katalog kodu + katalogda olmayan 2 Redüksiyon).
+
+## Stok aktarım yöntemi
+
+Excel yalnızca Mekonsis rafını izler (kalan = teslim − satış). Satışların fiyatı ve teslim edilen partilerin
+maliyeti bilinmediği için geçmiş hareketler yeniden oynatılmaz. Pozitif kalan, seçilen stok tarihinde
+**açılış stoğu + aynı gün Mekonsis teslimatı** olarak bir kez girilir; yalnızca birim maliyeti `onay.json`'da
+açıkça onaylanan kodlar için. Negatif kalanlar (satılan > teslim edilen) aktarılmaz.
+
+## Bilinen eksik ve çelişkiler (özet)
+
+- Birim üretim süresi, reçete (malzeme miktarı/birimi), hammadde stoğu, Heatemp'in kendi raf stoğu yok.
+- Geçmiş satışlarda birim fiyat yok.
+- `HT-SKS-S1` ve `HT-SKS-N1`: satılan teslim edilenden fazla, ilk satış ilk teslimattan önce.
+- Paslanmaz Mahal maliyet dökümünde bir kalem 600 yerine ≈300 adede bölünmüş (birim toplam etkileniyor).
+- Plastik Mahal (1,82 / 2,45 USD), Çoklama Kartı (14,57 / 15 USD), Termostat (9,2 / 9,5 USD) maliyetleri iki sayfada farklı.
+- Kanal 150mm ve Plastik Mahal maliyet dökümleri PT1000 içeriyor; stoktaki varyantlar NTC10K/NTC20K.
+- "Çoklama Kartı (3 Role)" fiyatının HT-FCM2 mi HT-FCM4 mü olduğu belirsiz; "Sıva Üstü Termostat"ın kodu yok.
+- "D" kodlu sensör serisinin (HT-…-D-…) adı dosyada açıklanmamış.
+
+## Kullanım
 
 ```bash
-# Dosyayı referans/ klasörüne koyun (klasör içeriği git'e eklenmez)
-npm run excel:incele -- "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx"
+# Excel'i referans/ klasörüne koyun (git'e eklenmez)
+npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx" --stok-tarihi 2026-09-28
+# import/excel-aktarim/RAPOR.md'yi inceleyin, onay.json'da onaylanan maliyetleri doldurun ve yeniden üretin
+bash scripts/excel-aktarim-test.sh     # yerel temiz veritabanında uçtan uca test
 ```
 
-Rapordaki "Önerilen hedef alan" sütunu yalnızca başlık adına dayalı bir tahmindir; her satır elle doğrulanmalıdır.
-
-## Hedef alan sözlüğü
-
-| Varlık | Alan | Zorunlu | Not |
-|---|---|---|---|
-| Ürün (`products`) | Kod, ad | Evet | Kod benzersiz |
-| | Detay/açıklama, görsel | Hayır | |
-| | Varsayılan satış fiyatı + para birimi (USD/TRY) | Hayır | |
-| | Birim üretim süresi (dk) | Evet (0 olabilir) | Simülasyon süre tahmini |
-| | Kritik / minimum / hedef stok | Evet (0 olabilir) | kritik ≤ minimum ≤ hedef |
-| Varyant (`product_variants`) | Kod, ad/detay (ör. "2000 W, 220 V") | Evet | Ürün başına en az bir varyant ("Standart") |
-| | Fiyat, süre, eşikler | Hayır | Boşsa ürün varsayılanı kullanılır |
-| Hammadde/komponent (`raw_materials`) | Kod, ad, tür (hammadde/komponent), birim türü, gösterim birimi | Evet | Birim türü sonradan (hareket varsa) değişmez |
-| Alış (`receive_material`) | Miktar + birim, birim fiyat, para birimi, alış tarihi | Evet | O günün kuru gerekir; tedarikçi opsiyonel |
-| Reçete (`bom_items`) | Varyant, malzeme, 1 adet için miktar + birim | Evet | Temel birime çevrilir |
-| Açılış stoğu (`record_opening_stock`) | Varyant, adet, gerçek birim maliyet + para birimi, sayım tarihi, açıklama | Evet | Sistem öncesi mamul için |
-| Teslimat | Varyant, adet, tarih, (parti) | Evet | Mekonsis'teki mevcut stok için açılıştan sonra |
-| Satış | Tarih, varyant, adet, gerçek birim fiyat, para birimi | Evet | Satış günü kuru gerekir; müşteri opsiyonel |
-| Kurumsal müşteri | Firma adı | Evet | Vergi no, yetkili, telefon, e-posta, adres opsiyonel |
-
-## Tipik stok takip sütunlarının karşılığı
-
-Excel doğrulandığında aşağıdaki kavramsal eşleştirme kullanılabilir:
-
-| Excel'de beklenebilecek kavram | Yeni sistemdeki karşılığı | Dikkat |
-|---|---|---|
-| Ürün kodu / adı / model | `products.code/name`, `product_variants.name` | Aynı ürünün modelleri → varyant |
-| Satış fiyatı | Ürün/varyant varsayılan fiyatı | Gerçek satış fiyatı her satışta ayrıca girilir |
-| Heatemp'te / depoda kalan | Açılış stoğu (Heatemp rafı) | Birim maliyet bilinmeli |
-| Mekonsis'te kalan | Açılış stoğu + aynı tarihli teslimat | Mekonsis'teki ürün Heatemp varlığıdır |
-| Satılan adet (toplam) | Geçmiş satışlar tek tek girilirse ciroya dahil olur | Tarih, fiyat ve o günün kuru olmadan ciro/kâr hesaplanamaz; yalnızca adet varsa geçmiş satış olarak girilmemeli |
-| Hammadde listesi / miktar | `raw_materials` + açılış alışı | Maliyet ve alış tarihi olmadan değerleme yapılamaz |
-| Birim (kg, g, m, adet) | Birim türü + gösterim birimi | kg → gram gibi normalizasyon otomatik |
-| Maliyet | Açılış stoğu birim maliyeti / alış birim fiyatı | Para birimi ve tarih belirtilmeli |
-
-## Aktarım ilkeleri
-
-- **Sessiz aktarım yok.** Canlı veritabanı yalnızca yöneticinin açık işlemiyle (ekranlardan veya ayrıca
-  onaylanmış bir içe aktarma betiğiyle) değişir. Bu teslimatta içe aktarma betiği yoktur.
-- Her tutar para birimi ve işlem günü kuruyla girilir; kur yoksa manuel kur gerekir.
-- Maliyeti bilinmeyen stok "0 maliyetli" girilmez; önce maliyet belirlenir.
-- Excel'deki örnek/deneme satırları gerçek veri gibi aktarılmaz.
+Uzak veritabanında önce `aktarim-kuru.sql` (değişiklik kaydetmez), ardından `aktarim.sql` çalıştırılır.
+Her iki dosya tek transaction'dır, tekrar çalıştırılabilir, mevcut kayıtları silmez veya değiştirmez.

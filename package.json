@@ -14,7 +14,8 @@
     "excel:incele": "tsx scripts/excel-incele.ts",
     "test:e2e": "node tests/e2e/arayuz-akisi.cjs",
     "dev:stack": "bash scripts/dev-stack/up.sh",
-    "dev:stack:down": "bash scripts/dev-stack/down.sh"
+    "dev:stack:down": "bash scripts/dev-stack/down.sh",
+    "excel:aktarim": "tsx scripts/excel-aktarim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

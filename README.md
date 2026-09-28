@@ -98,6 +98,21 @@ Ardından Supabase panelinde:
 
 Canlıya alırken barındırma ortamında (ör. Vercel) aynı değişkenleri tanımlayın.
 
+## Excel verisinin aktarımı
+
+Mevcut `Mekonsis_Heatamp_Stok_Takip` Excel'i için salt okunur bir aktarım paketi üreticisi vardır
+(ayrıntı: [`docs/EXCEL_ALAN_ESLESTIRME.md`](docs/EXCEL_ALAN_ESLESTIRME.md)):
+
+```bash
+npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx" --stok-tarihi 2026-09-28
+bash scripts/excel-aktarim-test.sh   # yerel temiz veritabanında test
+```
+
+Çıktılar `import/excel-aktarim/` altındadır (git dışında): `RAPOR.md`, `onay.json` (açılış maliyeti onayları),
+`gecmis-hareketler.csv`, `aktarim-kuru.sql` (kaydetmeden dener) ve `aktarim.sql` (tek transaction, tekrar
+çalıştırılabilir, silme yapmaz). SQL dosyaları Supabase SQL Editor'de çalıştırılır; tek yönetici varsa onun
+kimliğiyle çalışır (birden fazlaysa `--admin-email`).
+
 ## Migration dosyaları
 
 | Dosya | İçerik |
