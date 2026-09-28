@@ -412,7 +412,10 @@ export function Field({
 }) {
   return (
     <label className={cx("block", className)} data-invalid={error ? "" : undefined}>
-      <span className={cx("label", required && "required")}>{label}</span>
+      <span className="label">
+        {label}
+        {required ? <RequiredMark /> : null}
+      </span>
       {children}
       {error ? (
         <span className="field-error">
@@ -423,6 +426,11 @@ export function Field({
       {!error && hint ? <span className="help">{hint}</span> : null}
     </label>
   );
+}
+
+/** Zorunlu alan işareti: erişilebilir adın parçasıdır ("Ürün kodu *"). */
+export function RequiredMark() {
+  return <span className="text-red-500">{" *"}</span>;
 }
 
 /** Form bölümü başlığı (alan grupları için). */

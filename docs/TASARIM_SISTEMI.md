@@ -96,9 +96,9 @@ Kayıt yoksa `notFound()`.
 
 ### Formlar
 
-- Alanlar mantıklı gruplarda (`FormSection`), zorunlu alanlarda `FormField required` (etikete * ekler).
-  Mevcut e2e testleri etiket metinlerini kullanır; etiket metni yoksa `*`'ı etikete metin olarak yazmak
-  yerine `required` kullanın ve testteki seçiciyi raporlayın.
+- Alanlar mantıklı gruplarda (`FormSection`). Zorunlu alan: etikete `*` yazmayın, `<FormField label="Ürün kodu" required>`
+  kullanın; kırmızı ` *` etiketin gerçek metnidir, yani erişilebilir ad yine "Ürün kodu *" olur (e2e seçicileri bozulmaz).
+  Girdiye de `required` / `aria-required` verin.
 - `ActionForm` her gönderime `request_id` ekler (idempotent), beklerken düğme kilitlenir ve
   "Kaydediliyor…" döner, başarıda sağ altta bildirim gösterir.
 - Kısa işlem (malzeme alışı, teslimat, kur girişi, müşteri ekleme) → `Drawer`/`Modal`; kapsamlı kayıt

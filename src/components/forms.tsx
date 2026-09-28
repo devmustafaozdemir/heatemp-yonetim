@@ -4,7 +4,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createContext, use, useRef, useState, useTransition, type ReactNode } from "react";
 import { notifySuccess } from "@/components/Toaster";
-import { Alert, Button, cx, type ButtonVariant } from "@/components/ui";
+import { Alert, Button, cx, RequiredMark, type ButtonVariant } from "@/components/ui";
 import { useDialog } from "@/components/ui/dialog";
 import { initialActionState, type ActionState } from "@/lib/form";
 
@@ -140,7 +140,10 @@ export function FormField({
   const error = useFieldError(name);
   return (
     <label className={cx("block min-w-0", className)} data-invalid={error ? "" : undefined}>
-      <span className={cx("label", required && "required")}>{label}</span>
+      <span className="label">
+        {label}
+        {required ? <RequiredMark /> : null}
+      </span>
       {children}
       {error ? (
         <span className="field-error" role="alert">

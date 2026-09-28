@@ -100,10 +100,6 @@
   .label {
     @apply mb-1 block text-[13px] font-medium text-ink-soft;
   }
-  .required::after {
-    content: " *";
-    @apply text-red-500;
-  }
   .help {
     @apply mt-1 block text-xs text-ink-muted;
   }
