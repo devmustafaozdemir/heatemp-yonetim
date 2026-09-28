@@ -1,18 +1,29 @@
 // Mekonsis/Heatemp stok takip Excel'inden ERP aktarım paketi üretir (SALT OKUNUR).
-// Veritabanına bağlanmaz. Çıktılar (varsayılan import/excel-aktarim/, git dışında):
-//   RAPOR.md              — sayfa bazında aktarım kararları, sayılar, eksik/çelişkili alanlar
-//   onay.json             — açılış stoğu birim maliyet onayları (yoksa şablon oluşturulur, üzerine yazılmaz)
-//   gecmis-hareketler.csv — Excel'deki geçmiş teslimat ve satış satırları (arşiv; stok defterine girmez)
-//   aktarim-kuru.sql      — kuru çalıştırma: aynı işlemler, sonunda ROLLBACK
-//   aktarim.sql           — gerçek aktarım: tek transaction, tekrar çalıştırılabilir, silme yapmaz
+// Veritabanına bağlanmaz. Aktarım iki adımdır; çıktılar (varsayılan import/excel-aktarim/, git dışında):
+//
+//   1. adım — katalog (kur, maliyet veya yönetici onayı gerektirmez):
+//      katalog-aktarim-kuru.sql — kuru çalıştırma: aynı işlemler, sonunda ROLLBACK
+//      katalog-aktarim.sql      — ürün, varyant, kesin eşleşen satış fiyatları ve stok eşikleri
+//   2. adım — stok (yalnızca --stok-tarihi verilince ve en az bir maliyet onaylanınca üretilir):
+//      stok-aktarim-kuru.sql    — kuru çalıştırma
+//      stok-aktarim.sql         — açılış stoğu + aynı gün Mekonsis teslimatı; stok tarihinin TCMB kuru gömülü
+//   stok-onay.xlsx           — kontrol/onay tablosu: kalan adet, Excel'deki aday maliyetler yan yana,
+//                              ONAYLANAN birim maliyet/para birimi (siz doldurursunuz; yeniden üretimde korunur)
+//   RAPOR.md                 — sayfa bazında kararlar, sayılar, eksik/çelişkili alanlar
+//   gecmis-hareketler.csv    — Excel'deki geçmiş teslimat ve satış satırları (arşiv; stok defterine girmez)
 //
 // Kullanım:
-//   npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx" --stok-tarihi 2026-09-28
-//   [--onay import/excel-aktarim/onay.json] [--cikti import/excel-aktarim] [--admin-email yonetici@firma.com]
+//   npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx"
+//   npm run excel:aktarim -- --excel "..." --stok-tarihi 2026-09-30 [--kur-turu ForexBuying|ForexSelling]
+//   [--cikti import/excel-aktarim] [--admin-email yonetici@firma.com]
+// Stok tarihi verildiğinde o günün TCMB bülteni (www.tcmb.gov.tr/kurlar arşivi) indirilir; hafta sonu veya
+// tatilse önceki son yayımlanan bülten kaynak tarihiyle kullanılır. Bugünün kuru geçmiş tarihe uygulanmaz.
+// Test için kaynak adresi TCMB_BASE_URL ortam değişkeniyle değiştirilebilir.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
+import { fetchTcmb, TCMB_BASE_URL, tcmbUrl, type TcmbRateType } from "../src/lib/fx/sources";
 import {
   computeStock,
   groupProducts,
@@ -23,7 +34,6 @@ import {
   type Currency,
   type Movement,
   type ProductDef,
-  type StockLine,
 } from "./excel-aktarim-model";
 
 // ---------------------------------------------------------------- argümanlar
@@ -34,10 +44,19 @@ function arg(name: string): string | null {
 const ROOT = path.resolve(__dirname, "..");
 const EXCEL = arg("excel");
 const OUT = path.resolve(ROOT, arg("cikti") ?? "import/excel-aktarim");
-const ONAY = path.resolve(ROOT, arg("onay") ?? path.join(path.relative(ROOT, OUT), "onay.json"));
-const STOK_TARIHI_ARG = arg("stok-tarihi");
-const ADMIN_EMAIL_ARG = arg("admin-email");
+const ONAY_XLSX = path.join(OUT, "stok-onay.xlsx");
+const STOK_TARIHI = arg("stok-tarihi");
+const ADMIN_EMAIL = arg("admin-email");
+const KUR_TURU = (arg("kur-turu") ?? "ForexBuying") as TcmbRateType;
+const TCMB_BASE = process.env.TCMB_BASE_URL?.replace(/\/+$/, "") || TCMB_BASE_URL;
 const SEED = "heatemp-excel-aktarim-v1";
+const ONAY_SAYFASI = "Stok onayı";
+
+// Satış fiyatı eşleşmesi belirsiz ürünler: siz netleştirene kadar maliyet onayı girilse bile stok aktarımına alınmaz.
+const BELIRSIZ_FIYAT: Record<string, string> = {
+  "HT-FCM":
+    'Satış Fiyatları sayfasındaki "Çoklama Kartı (3 Role)" satırının HT-FCM2 mi HT-FCM4 mü olduğu belirsiz; netleşene kadar stok aktarımına alınmaz.',
+};
 
 // ---------------------------------------------------------------- hücre yardımcıları
 function raw(cell: ExcelJS.Cell): unknown {
@@ -81,6 +100,8 @@ function currencyOf(cell: ExcelJS.Cell): Currency | null {
 }
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r4 = (n: number) => Math.round(n * 10000) / 10000;
+const fmtN = (n: number | null | undefined) =>
+  n === null || n === undefined || Number.isNaN(n) ? "" : String(n).replace(".", ",");
 
 // ---------------------------------------------------------------- tipler
 interface Issue {
@@ -107,18 +128,36 @@ interface CostBlock {
   rate: number | null;
   multiplier: number | null;
 }
-interface OnayRow {
-  adet: number;
-  birim_maliyet: number | null;
-  para_birimi: Currency | null;
-  excel_adaylari: { deger: number; para_birimi: Currency; kaynak: string }[];
-  not?: string;
+interface PrevApproval {
+  qty: number | null;
+  cost: number | null;
+  currency: Currency | null;
+  note: string | null;
 }
-interface Onay {
-  aciklama: string;
-  stok_tarihi: string | null;
-  admin_email: string | null;
-  acilis_maliyetleri: Record<string, OnayRow>;
+interface OnayRow {
+  sku: string;
+  excelName: string;
+  productCode: string;
+  erpName: string;
+  delivered: number;
+  sold: number;
+  remaining: number;
+  aday1: { value: number; currency: Currency; source: string } | null;
+  aday2: { value: number; currency: Currency; usd: number | null; rate: number | null; source: string } | null;
+  approvedCost: number | null;
+  approvedCurrency: Currency | null;
+  approvedNote: string | null;
+  status: "Onaylandı" | "Onay bekliyor" | "Stok yok" | "HARİÇ: negatif kalan" | "HARİÇ: belirsiz fiyat eşleşmesi";
+  notes: string[];
+}
+interface KurBilgisi {
+  stokTarihi: string;
+  bultenTarihi: string;
+  bultenNo: string | null;
+  kurTuru: TcmbRateType;
+  kur: number;
+  url: string;
+  raw: Record<string, unknown>;
 }
 
 // Satış Fiyatları sayfasındaki satır adı → ERP hedefi (ürün veya varyant). Belirsiz olanlar null.
@@ -306,6 +345,12 @@ async function main() {
       }
     }
   }
+  // Maliyet dökümüne ait notlar → stok-onay.xlsx açıklaması (Satış Fiyatları satır adına göre)
+  const costNotes = new Map<string, string[]>();
+  const addCostNote = (blockTitle: string, note: string) => {
+    const key = COST_BLOCK_TO_PRICE[blockTitle];
+    if (key) costNotes.set(key, [...(costNotes.get(key) ?? []), note]);
+  };
   // Toplu (600 adet) blok ile birim blok tutarlılığı
   const batchBlock = blocks.find((b) => /^\d+\s*Ad\./.test(b.title));
   const unitBlock = blocks.find((b) => b.title.startsWith("1 Adet Paslanmaz"));
@@ -315,6 +360,10 @@ async function main() {
       const u = unitBlock.lines.find((l) => l.label === line.label);
       if (u && Math.abs(u.value - line.value / n) > 0.05) {
         const implied = Math.round(line.value / u.value);
+        addCostNote(
+          unitBlock.title,
+          `Aday 2 dökümünde "${line.label}" (${u.cell}) ${fmtN(u.value)} TL; ${n} adetlik toplamdan ${fmtN(r2(line.value / n))} TL olmalı (≈${implied} adede bölünmüş). Düzeltilmiş döküm toplamı ${fmtN(r2((unitBlock.total ?? 0) - u.value + line.value / n))} TL (≈${fmtN(r2(((unitBlock.total ?? 0) - u.value + line.value / n) / (unitBlock.rate ?? NaN)))} USD).`,
+        );
         issues.push({
           seviye: "çelişki",
           konu: `Ürün Maliyet ${u.cell}`,
@@ -337,6 +386,7 @@ async function main() {
   }
   const pvc = blocks.find((b) => b.title === "150mm Kanal Tipi Sıcaklık Sensörü");
   if (pvc?.lines.some((l) => /PT1000/.test(l.label))) {
+    addCostNote(pvc.title, "Aday 2 dökümü PT1000 eleman içeriyor; stoktaki varyantlar NTC10K/NTC20K.");
     issues.push({
       seviye: "uyarı",
       konu: "Maliyet: Kanal Tipi 150mm",
@@ -345,6 +395,7 @@ async function main() {
   }
   const pmt = blocks.find((b) => b.title === "Plastik Mahal Tipi");
   if (pmt?.lines.some((l) => /PT1000/.test(l.label))) {
+    addCostNote(pmt.title, "Aday 2 dökümü PT1000 eleman içeriyor; stoktaki varyantlar NTC10K/NTC20K.");
     issues.push({
       seviye: "uyarı",
       konu: "Maliyet: Plastik Mahal Tipi",
@@ -424,79 +475,153 @@ async function main() {
     for (const i of s.issues) issues.push({ seviye: "çelişki", konu: `Stok ${s.sku}`, aciklama: i });
   }
 
-  // ------------------------------------------------ Açılış maliyeti adayları ve onay
-  const candidatesFor = (sku: string): OnayRow["excel_adaylari"] => {
-    const v = parseSku(sku);
-    const out: OnayRow["excel_adaylari"] = [];
-    for (const pr of priceRows) {
-      const t = PRICE_TARGETS[pr.product.trim()];
-      if (!t || t.level === "none" || pr.cost === null || !pr.costCurrency) continue;
-      if ((t.level === "product" && t.code === v.productCode) || (t.level === "variant" && t.code === sku)) {
-        out.push({ deger: pr.cost, para_birimi: pr.costCurrency, kaynak: `Satış Fiyatları!C${pr.row} (${pr.product.trim()})` });
-        const block = blocks.find((b) => COST_BLOCK_TO_PRICE[b.title] === pr.product.trim());
-        if (block?.total !== null && block?.total !== undefined && block.totalCurrency) {
-          out.push({
-            deger: r4(block.total),
-            para_birimi: block.totalCurrency,
-            kaynak: `Ürün Maliyet dökümü "${block.title}" toplamı`,
-          });
-        }
-      }
-    }
-    return out;
-  };
-  const positive = stock.filter((s) => s.remaining > 0);
-  let onay: Onay;
-  let onayCreated = false;
-  if (existsSync(ONAY)) {
-    onay = JSON.parse(readFileSync(ONAY, "utf8")) as Onay;
-  } else {
-    onay = {
-      aciklama:
-        "Açılış stoğu yalnızca birim_maliyet ve para_birimi doldurulan kodlar için oluşturulur. excel_adaylari yalnızca bilgi içindir; Excel'deki değerler parti maliyeti değil tahmini maliyettir. Boş bırakılan kodlar aktarılmaz ve raporda 'bekliyor' olarak listelenir.",
-      stok_tarihi: STOK_TARIHI_ARG,
-      admin_email: ADMIN_EMAIL_ARG,
-      acilis_maliyetleri: Object.fromEntries(
-        positive.map((s) => [
-          s.sku,
-          { adet: s.remaining, birim_maliyet: null, para_birimi: null, excel_adaylari: candidatesFor(s.sku) },
-        ]),
-      ),
-    };
-    onayCreated = true;
-  }
-  const stokTarihi = STOK_TARIHI_ARG ?? onay.stok_tarihi;
-  if (!stokTarihi || !/^\d{4}-\d{2}-\d{2}$/.test(stokTarihi)) {
-    throw new Error("Stok tarihi gerekli: --stok-tarihi YYYY-AA-GG (Excel'deki kalanların geçerli olduğu gün).");
-  }
-  const adminEmail = ADMIN_EMAIL_ARG ?? onay.admin_email ?? null;
-  const confirmed: { sku: string; qty: number; cost: number; currency: Currency; source: string }[] = [];
-  const pending: StockLine[] = [];
-  for (const s of positive) {
-    const o = onay.acilis_maliyetleri[s.sku];
-    if (o && o.adet !== s.remaining) {
-      throw new Error(`onay.json'daki adet (${o.adet}) Excel'deki kalanla (${s.remaining}) uyuşmuyor: ${s.sku}. Onay dosyasını yeniden oluşturun.`);
-    }
-    if (o && o.birim_maliyet !== null && o.birim_maliyet !== undefined) {
-      if (!(o.birim_maliyet > 0) || (o.para_birimi !== "USD" && o.para_birimi !== "TRY")) {
-        throw new Error(`onay.json: ${s.sku} için birim_maliyet > 0 ve para_birimi USD/TRY olmalı.`);
-      }
-      confirmed.push({
-        sku: s.sku,
-        qty: s.remaining,
-        cost: o.birim_maliyet,
-        currency: o.para_birimi,
-        source: o.not ?? "onay.json (kullanıcı onayı)",
-      });
+
+  // ------------------------------------------------ Stok onay tablosu
+  const stockNameBy = new Map(summary.map((s) => [s.sku, s.name]));
+  const previous = existsSync(ONAY_XLSX) ? await readApprovals(ONAY_XLSX) : new Map<string, PrevApproval>();
+  const approvalErrors: string[] = [];
+  const rows: OnayRow[] = stock.map((s) => {
+    const v = parseSku(s.sku);
+    const pr = priceRows.find((p) => {
+      const t = PRICE_TARGETS[p.product.trim()];
+      return (
+        t && t.level !== "none" && ((t.level === "product" && t.code === v.productCode) || (t.level === "variant" && t.code === s.sku))
+      );
+    });
+    const block = pr ? blocks.find((b) => COST_BLOCK_TO_PRICE[b.title] === pr.product.trim()) : undefined;
+    const aday1 =
+      pr && pr.cost !== null && pr.costCurrency
+        ? { value: pr.cost, currency: pr.costCurrency, source: `Satış Fiyatları!C${pr.row} (${pr.product.trim()})` }
+        : null;
+    const aday2 =
+      block && block.total !== null && block.totalCurrency
+        ? {
+            value: r4(block.total),
+            currency: block.totalCurrency,
+            usd: block.totalCurrency === "USD" ? r4(block.total) : block.convertedCurrency === "USD" && block.converted !== null ? r4(block.converted) : null,
+            rate: block.rate,
+            source: `Ürün Maliyet "${block.title}" toplamı (${block.cell})`,
+          }
+        : null;
+
+    const notes: string[] = [...s.issues];
+    let status: OnayRow["status"];
+    if (s.remaining < 0) {
+      status = "HARİÇ: negatif kalan";
+      notes.push("Siz netleştirene kadar stok aktarımına alınmaz.");
+    } else if (s.remaining === 0) {
+      status = "Stok yok";
+    } else if (BELIRSIZ_FIYAT[v.productCode]) {
+      status = "HARİÇ: belirsiz fiyat eşleşmesi";
+      notes.push(BELIRSIZ_FIYAT[v.productCode]);
     } else {
-      pending.push(s);
+      status = "Onay bekliyor";
+    }
+    if (pr) notes.push(...(costNotes.get(pr.product.trim()) ?? []));
+    if (aday1 && aday2?.usd !== null && aday2?.usd !== undefined && aday1.currency === "USD" && Math.abs(aday1.value - aday2.usd) >= 0.1) {
+      notes.unshift(
+        `Adaylar çelişkili: ${fmtN(aday1.value)} USD ↔ ${fmtN(aday2.value)} ${aday2.currency}${aday2.currency !== "USD" ? ` (Excel'in sabit ${fmtN(aday2.rate)} kuruyla ${fmtN(r2(aday2.usd))} USD)` : ""}.`,
+      );
+    }
+    if (!aday1 && !aday2) notes.push("Excel'de bu ürün için maliyet yok.");
+    if (aday1 || aday2) {
+      notes.push(`Kaynak: ${[aday1 ? `aday 1 ${aday1.source}` : null, aday2 ? `aday 2 ${aday2.source}` : null].filter(Boolean).join("; ")}.`);
+    }
+
+    const p = previous.get(s.sku);
+    let approvedCost: number | null = null;
+    let approvedCurrency: Currency | null = null;
+    let approvedNote: string | null = null;
+    if (p && (p.cost !== null || p.currency !== null)) {
+      approvedCost = p.cost;
+      approvedCurrency = p.currency;
+      approvedNote = p.note;
+      if (p.qty !== null && p.qty !== s.remaining) {
+        approvalErrors.push(
+          `${s.sku}: tablodaki kalan ${p.qty}, Excel'deki güncel kalan ${s.remaining}. Onayı gözden geçirip maliyet hücrelerini temizleyin veya yeniden girin.`,
+        );
+      }
+      if (p.cost === null || !(p.cost > 0)) approvalErrors.push(`${s.sku}: ONAYLANAN birim maliyet sıfırdan büyük bir sayı olmalı.`);
+      if (p.currency === null) approvalErrors.push(`${s.sku}: ONAYLANAN para birimi USD veya TRY olmalı.`);
+      if (status === "Onay bekliyor") status = "Onaylandı";
+      else if (status.startsWith("HARİÇ")) notes.push("Girilen maliyet onayı hariç tutulduğu için kullanılmaz.");
+    } else if (p?.note) {
+      approvedNote = p.note;
+    }
+    return {
+      sku: s.sku,
+      excelName: stockNameBy.get(s.sku) ?? "",
+      productCode: v.productCode,
+      erpName: `${v.productName} / ${v.variantName}`,
+      delivered: s.delivered,
+      sold: s.sold,
+      remaining: s.remaining,
+      aday1,
+      aday2,
+      approvedCost,
+      approvedCurrency,
+      approvedNote,
+      status,
+      notes,
+    };
+  });
+  for (const sku of previous.keys()) {
+    if (!rows.some((r) => r.sku === sku) && (previous.get(sku)!.cost !== null || previous.get(sku)!.currency !== null)) {
+      approvalErrors.push(`${sku}: onay tablosunda var ama Excel'in stok hareketlerinde yok.`);
+    }
+  }
+  if (approvalErrors.length) {
+    throw new Error(`stok-onay.xlsx doğrulanamadı:\n  - ${approvalErrors.join("\n  - ")}`);
+  }
+  const approved = rows.filter((r) => r.status === "Onaylandı");
+
+  // ------------------------------------------------ Stok tarihi ve TCMB kuru
+  let kur: KurBilgisi | null = null;
+  let stokDurum: string;
+  let exitCode = 0;
+  if (!["ForexBuying", "ForexSelling"].includes(KUR_TURU)) throw new Error("--kur-turu ForexBuying veya ForexSelling olmalı.");
+  if (STOK_TARIHI !== null) {
+    const bugun = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(STOK_TARIHI) || Number.isNaN(Date.parse(`${STOK_TARIHI}T00:00:00Z`))) {
+      throw new Error("Stok tarihi YYYY-AA-GG biçiminde olmalı (ör. --stok-tarihi 2026-09-30).");
+    }
+    if (STOK_TARIHI > bugun) throw new Error(`Stok tarihi (${STOK_TARIHI}) gelecekte olamaz.`);
+  }
+  if (!STOK_TARIHI) {
+    stokDurum = "Stok tarihi henüz verilmedi (--stok-tarihi YYYY-AA-GG); stok SQL'i üretilmedi.";
+  } else if (!approved.length) {
+    stokDurum = "stok-onay.xlsx'te onaylanmış (birim maliyet + para birimi girilmiş) satır yok; stok SQL'i üretilmedi.";
+  } else {
+    try {
+      const r = await fetchTcmb(STOK_TARIHI, KUR_TURU, { baseUrl: TCMB_BASE, lookbackDays: 10, timeoutMs: 15000 });
+      if (r.rateDate > STOK_TARIHI) {
+        throw new Error(`TCMB bülten tarihi (${r.rateDate}) stok tarihinden (${STOK_TARIHI}) sonra.`);
+      }
+      kur = {
+        stokTarihi: STOK_TARIHI,
+        bultenTarihi: r.rateDate,
+        bultenNo: (r.raw.bulletin as string | null) ?? null,
+        kurTuru: KUR_TURU,
+        kur: r.rate,
+        url: tcmbUrl(r.rateDate, TCMB_BASE),
+        raw: {
+          ...r.raw,
+          istenen_tarih: STOK_TARIHI,
+          bulten_tarihi: r.rateDate,
+          url: tcmbUrl(r.rateDate, TCMB_BASE),
+          alinma_zamani: new Date().toISOString(),
+          kaynak: "scripts/excel-aktarim.ts (Excel stok devri)",
+        },
+      };
+      stokDurum = `Stok SQL'i üretildi: ${approved.length} kod, TCMB ${KUR_TURU} ${kur.kur} (bülten ${kur.bultenTarihi}).`;
+    } catch (err) {
+      exitCode = 2;
+      stokDurum = `TCMB'den ${STOK_TARIHI} kuru alınamadı (${err instanceof Error ? err.message : String(err)}); stok SQL'i üretilmedi. www.tcmb.gov.tr erişimi olan bir makinede yeniden çalıştırın.`;
     }
   }
 
   // ------------------------------------------------ çıktılar
   mkdirSync(OUT, { recursive: true });
-  if (onayCreated) writeFileSync(ONAY, JSON.stringify(onay, null, 2) + "\n");
-
   const csvEsc = (v: unknown) => {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -508,10 +633,29 @@ async function main() {
   ].join("\n");
   writeFileSync(path.join(OUT, "gecmis-hareketler.csv"), csv + "\n");
 
-  const sql = (commit: boolean) =>
-    buildSql({ products, variantPrice, thresholds, priceCurrency, confirmed, pending, stock, stokTarihi, adminEmail, commit });
-  writeFileSync(path.join(OUT, "aktarim.sql"), sql(true));
-  writeFileSync(path.join(OUT, "aktarim-kuru.sql"), sql(false));
+  const katalog = (commit: boolean) => buildCatalogSql({ products, variantPrice, thresholds, priceCurrency, commit });
+  writeFileSync(path.join(OUT, "katalog-aktarim.sql"), katalog(true));
+  writeFileSync(path.join(OUT, "katalog-aktarim-kuru.sql"), katalog(false));
+
+  const stokDosyalari = ["stok-aktarim.sql", "stok-aktarim-kuru.sql"].map((f) => path.join(OUT, f));
+  if (kur) {
+    const stok = (commit: boolean) => buildStockSql({ rows, approved, kur: kur!, adminEmail: ADMIN_EMAIL, commit });
+    writeFileSync(stokDosyalari[0], stok(true));
+    writeFileSync(stokDosyalari[1], stok(false));
+  } else {
+    for (const f of stokDosyalari) rmSync(f, { force: true }); // eski/eskimiş stok SQL'i kalmasın
+  }
+  // Önceki sürümün birleşik paket dosyaları (artık kullanılmıyor)
+  for (const f of ["aktarim.sql", "aktarim-kuru.sql"]) rmSync(path.join(OUT, f), { force: true });
+  const eskiOnay = path.join(OUT, "onay.json");
+  if (existsSync(eskiOnay)) {
+    const o = JSON.parse(readFileSync(eskiOnay, "utf8")) as { acilis_maliyetleri?: Record<string, { birim_maliyet: unknown }> };
+    const dolu = Object.values(o.acilis_maliyetleri ?? {}).some((x) => x.birim_maliyet !== null && x.birim_maliyet !== undefined);
+    if (dolu) console.warn("Uyarı: onay.json artık kullanılmıyor; içindeki maliyetleri stok-onay.xlsx'e taşıyın.");
+    else rmSync(eskiOnay);
+  }
+
+  await writeApprovals(ONAY_XLSX, rows, { excelName: path.basename(EXCEL), stokTarihi: STOK_TARIHI });
 
   writeFileSync(
     path.join(OUT, "RAPOR.md"),
@@ -530,46 +674,175 @@ async function main() {
       blocks,
       rates,
       thresholds,
-      stock,
-      confirmed,
-      pending,
+      rows,
+      approved,
       issues,
-      stokTarihi,
-      onayPath: path.relative(ROOT, ONAY),
+      kur,
+      stokDurum,
     }),
   );
 
   const variantCount = products.reduce((a, p) => a + p.variants.length, 0);
-  console.log(`Ürün: ${products.length}, varyant: ${variantCount}, katalog kodu: ${catalog.length}`);
+  const positive = rows.filter((r) => r.remaining > 0);
+  console.log(`Katalog: ${products.length} ürün, ${variantCount} varyant, ${[...productBy.values()].filter((p) => p.defaultPrice !== null).length + variantPrice.size} kesin fiyat eşleşmesi → katalog-aktarim.sql`);
   console.log(`Teslimat satırı: ${deliveries.length}, satış satırı: ${sales.length}`);
-  console.log(`Kalanı pozitif varyant: ${positive.length} (${positive.reduce((a, s) => a + s.remaining, 0)} adet); onaylı maliyet: ${confirmed.length}, bekleyen: ${pending.length}`);
+  console.log(
+    `Mekonsis kalanı pozitif: ${positive.length} kod (${positive.reduce((a, r) => a + r.remaining, 0)} adet); onaylı: ${approved.length} (${approved.reduce((a, r) => a + r.remaining, 0)} adet); hariç: ${rows.filter((r) => r.status.startsWith("HARİÇ")).length}`,
+  );
   console.log(`Çelişki/eksik/uyarı: ${issues.length}`);
-  console.log(`Çıktılar: ${path.relative(ROOT, OUT)}/ ${onayCreated ? "(onay.json şablonu oluşturuldu)" : ""}`);
+  console.log(`Stok: ${stokDurum}`);
+  console.log(`Çıktılar: ${path.relative(ROOT, OUT)}/`);
+  process.exitCode = exitCode;
 }
 
-// ---------------------------------------------------------------- SQL
-function buildSql(o: {
-  products: ProductDef[];
-  variantPrice: Map<string, { price: number; currency: Currency; source: string }>;
-  thresholds: { critical: number; watch: number } | null;
-  priceCurrency: Currency;
-  confirmed: { sku: string; qty: number; cost: number; currency: Currency; source: string }[];
-  pending: StockLine[];
-  stock: StockLine[];
-  stokTarihi: string;
-  adminEmail: string | null;
-  commit: boolean;
-}): string {
-  const t = o.thresholds ?? { critical: 0, watch: 0 };
-  const L: string[] = [];
-  const push = (...s: string[]) => L.push(...s);
-  push(
+// ---------------------------------------------------------------- stok-onay.xlsx
+const COL = {
+  kod: "Ürün kodu",
+  ad: "Ürün adı (Excel)",
+  erp: "ERP ürün / varyant",
+  teslim: "Teslim edilen",
+  satis: "Satılan",
+  kalan: "Mekonsis kalan (adet)",
+  a1: "Aday 1: Satış Fiyatları maliyeti",
+  a1pb: "Aday 1 para birimi",
+  a2: "Aday 2: Ürün Maliyet dökümü toplamı",
+  a2pb: "Aday 2 para birimi",
+  a2usd: "Aday 2 USD karşılığı (Excel'in sabit kuruyla, bilgi)",
+  maliyet: "ONAYLANAN birim maliyet",
+  pb: "ONAYLANAN para birimi",
+  not: "Onay notu (kaynak, isteğe bağlı)",
+  durum: "Stok aktarımı",
+  aciklama: "Açıklama",
+} as const;
+
+async function readApprovals(file: string): Promise<Map<string, PrevApproval>> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const ws = wb.getWorksheet(ONAY_SAYFASI);
+  if (!ws) throw new Error(`${path.basename(file)} içinde "${ONAY_SAYFASI}" sayfası yok.`);
+  const cols = new Map<string, number>();
+  ws.getRow(1).eachCell((c, n) => cols.set(text(c), n));
+  const need = [COL.kod, COL.kalan, COL.maliyet, COL.pb];
+  const missing = need.filter((h) => !cols.has(h));
+  if (missing.length) throw new Error(`${path.basename(file)}: başlık bulunamadı: ${missing.join(", ")}`);
+  const out = new Map<string, PrevApproval>();
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const sku = normalizeCode(text(row.getCell(cols.get(COL.kod)!)));
+    if (!sku) continue;
+    const costRaw = raw(row.getCell(cols.get(COL.maliyet)!));
+    let cost: number | null = null;
+    if (typeof costRaw === "number") cost = costRaw;
+    else if (typeof costRaw === "string" && costRaw.trim()) {
+      const n = Number(costRaw.trim().replace(/\s/g, "").replace(",", "."));
+      cost = Number.isFinite(n) ? n : NaN;
+    }
+    const pbText = text(row.getCell(cols.get(COL.pb)!)).toUpperCase();
+    const currency: Currency | null =
+      pbText === "USD" || pbText === "$" ? "USD" : pbText === "TRY" || pbText === "TL" || pbText === "₺" ? "TRY" : null;
+    if (pbText && !currency) throw new Error(`${path.basename(file)} satır ${r} (${sku}): para birimi "${pbText}" tanınmadı; USD veya TRY yazın.`);
+    const qty = num(row.getCell(cols.get(COL.kalan)!));
+    const note = cols.has(COL.not) ? text(row.getCell(cols.get(COL.not)!)) || null : null;
+    out.set(sku, { qty, cost: cost === null ? null : cost, currency, note });
+  }
+  return out;
+}
+
+async function writeApprovals(file: string, rows: OnayRow[], meta: { excelName: string; stokTarihi: string | null }) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "scripts/excel-aktarim.ts";
+  const ws = wb.addWorksheet(ONAY_SAYFASI, { views: [{ state: "frozen", xSplit: 1, ySplit: 1 }] });
+  const widths: Record<keyof typeof COL, number> = {
+    kod: 20, ad: 34, erp: 40, teslim: 9, satis: 9, kalan: 11, a1: 14, a1pb: 9, a2: 14, a2pb: 9, a2usd: 16,
+    maliyet: 14, pb: 11, not: 28, durum: 30, aciklama: 90,
+  };
+  ws.columns = (Object.keys(COL) as (keyof typeof COL)[]).map((k) => ({ header: COL[k], key: k, width: widths[k] }));
+  const head = ws.getRow(1);
+  head.font = { bold: true };
+  head.alignment = { wrapText: true, vertical: "middle" };
+  head.height = 45;
+  const fill = (argb: string): ExcelJS.Fill => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+  for (const k of ["maliyet", "pb", "not"] as const) head.getCell(k).fill = fill("FFFFD966");
+
+  for (const r of rows) {
+    const row = ws.addRow({
+      kod: r.sku,
+      ad: r.excelName,
+      erp: r.erpName,
+      teslim: r.delivered,
+      satis: r.sold,
+      kalan: r.remaining,
+      a1: r.aday1?.value ?? null,
+      a1pb: r.aday1?.currency ?? null,
+      a2: r.aday2?.value ?? null,
+      a2pb: r.aday2?.currency ?? null,
+      a2usd: r.aday2 && r.aday2.currency !== "USD" ? r.aday2.usd : null,
+      maliyet: r.approvedCost,
+      pb: r.approvedCurrency,
+      not: r.approvedNote,
+      durum: r.status,
+      aciklama: r.notes.join(" "),
+    });
+    row.alignment = { vertical: "top" };
+    row.getCell("aciklama").alignment = { wrapText: true, vertical: "top" };
+    for (const k of ["a1", "a2", "a2usd", "maliyet"] as const) row.getCell(k).numFmt = "0.00##";
+    const excluded = r.status.startsWith("HARİÇ") || r.status === "Stok yok";
+    for (const k of ["maliyet", "pb", "not"] as const) row.getCell(k).fill = fill(excluded ? "FFE7E6E6" : "FFFFF2CC");
+    if (!excluded) {
+      row.getCell("maliyet").dataValidation = {
+        type: "decimal",
+        operator: "greaterThan",
+        formulae: [0],
+        allowBlank: true,
+        showErrorMessage: true,
+        errorTitle: "Birim maliyet",
+        error: "Sıfırdan büyük bir sayı girin.",
+      };
+      row.getCell("pb").dataValidation = {
+        type: "list",
+        formulae: ['"USD,TRY"'],
+        allowBlank: true,
+        showErrorMessage: true,
+        errorTitle: "Para birimi",
+        error: "USD veya TRY seçin.",
+      };
+    }
+    if (r.status.startsWith("HARİÇ")) row.getCell("durum").font = { bold: true, color: { argb: "FFC00000" } };
+    if (r.remaining < 0) row.getCell("kalan").font = { bold: true, color: { argb: "FFC00000" } };
+    if (r.notes.some((n) => n.startsWith("Adaylar çelişkili"))) {
+      for (const k of ["a1", "a1pb", "a2", "a2pb", "a2usd"] as const) row.getCell(k).fill = fill("FFFCE4D6");
+    }
+  }
+  ws.autoFilter = { from: "A1", to: { row: 1, column: Object.keys(COL).length } };
+
+  const help = wb.addWorksheet("Nasıl kullanılır");
+  help.getColumn(1).width = 120;
+  [
+    `Kaynak: ${meta.excelName}. Bu dosya scripts/excel-aktarim.ts tarafından üretilir; yeniden üretimde sarı sütunlardaki onaylarınız korunur.`,
+    `Stok tarihi: ${meta.stokTarihi ?? "henüz verilmedi"}.`,
+    "",
+    "1. Her satırda Excel'deki aday maliyetleri inceleyin. Aday 1 ve Aday 2 çelişkiliyse hücreler turuncu boyanır; eksik olanlar boştur.",
+    "2. Doğru olduğunu bildiğiniz birim maliyeti 'ONAYLANAN birim maliyet' sütununa, para birimini 'ONAYLANAN para birimi' sütununa (USD/TRY) yazın.",
+    "   Adaylar yalnızca bilgi içindir; siz yazmadıkça hiçbir maliyet kullanılmaz. İsterseniz kaynağı 'Onay notu' sütununa yazın (açılış kaydının notuna eklenir).",
+    "3. Boş bırakılan satırlar stok aktarımına alınmaz ('Onay bekliyor').",
+    "4. Negatif kalanlı ve fiyat eşleşmesi belirsiz satırlar (gri) siz netleştirip kod listesi güncellenene kadar maliyet girilse bile aktarılmaz.",
+    "5. Dosyayı kaydedip npm run excel:aktarim -- --excel \"...\" --stok-tarihi YYYY-AA-GG ile yeniden üretin.",
+    "   Stok tarihinin TCMB kuru otomatik alınır; tatil/hafta sonuysa önceki son bülten kaynak tarihiyle kaydedilir. Manuel kur gerekmez.",
+    "",
+    "Açılış stoğu üretim sayılmaz (Dashboard'daki üretilen adet ve üretim harcaması artmaz); Mekonsis'e aktarım satış değildir (ciro/kâr oluşmaz).",
+  ].forEach((t) => (help.addRow([t]).getCell(1).alignment = { wrapText: true }));
+  await wb.xlsx.writeFile(file);
+}
+
+// ---------------------------------------------------------------- SQL ortak parçalar
+function sqlHeader(title: string, commit: boolean, extra: string[]): string[] {
+  return [
     "-- =====================================================================",
-    `-- Heatemp ERP — Excel aktarımı (${o.commit ? "GERÇEK: COMMIT" : "KURU ÇALIŞTIRMA: sonunda ROLLBACK, hiçbir şey kaydedilmez"})`,
+    `-- Heatemp ERP — ${title} (${commit ? "GERÇEK: COMMIT" : "KURU ÇALIŞTIRMA: sonunda ROLLBACK, hiçbir şey kaydedilmez"})`,
     "-- scripts/excel-aktarim.ts tarafından üretildi; elle düzenlemeyin, yeniden üretin.",
     "-- Supabase SQL Editor'de veya psql ile tek parça çalıştırın (postgres rolü).",
     "-- Tekrar çalıştırılabilir: mevcut kayıtları silmez ve değiştirmez; var olanı atlar.",
-    "-- Geçmiş teslimat/satış satırları stok defterine AKTARILMAZ (bkz. RAPOR.md).",
+    ...extra.map((l) => `-- ${l}`),
     "-- =====================================================================",
     "",
     "do $$ begin if to_regclass('pg_temp._aktarim_rapor') is not null then drop table pg_temp._aktarim_rapor; end if; end $$;",
@@ -580,11 +853,8 @@ function buildSql(o: {
     "  sira serial primary key, adim text not null, kod text, sonuc text not null, aciklama text",
     ");",
     "",
-    "-- 0) Ön koşullar: ERP migration'ları ve yönetici kimliği",
+    "-- 0) Ön koşul: ERP migration'ları uygulanmış olmalı",
     "do $$",
-    "declare",
-    "  v_uid uuid;",
-    "  v_count integer;",
     "begin",
     "  if to_regclass('public.production_batches') is null",
     "     or not exists (select 1 from information_schema.columns where table_schema = 'public'",
@@ -592,39 +862,56 @@ function buildSql(o: {
     "     or to_regprocedure('public.record_opening_stock(uuid,integer,numeric,text,bigint,date,text,uuid)') is null then",
     "    raise exception 'ERP migration''ları (20260928090000…20260928090900) bu veritabanına uygulanmamış.';",
     "  end if;",
-  );
-  if (o.adminEmail) {
-    push(
-      "  select u.id into v_uid from auth.users u",
-      "    join public.app_users a on a.user_id = u.id and a.role = 'admin'",
-      `   where lower(u.email) = lower(${sqlString(o.adminEmail)});`,
-      "  if v_uid is null then",
-      `    raise exception 'Yönetici bulunamadı: %. Kullanıcı app_users tablosunda admin olmalı.', ${sqlString(o.adminEmail)};`,
-      "  end if;",
-    );
-  } else {
-    push(
-      "  select count(*), (array_agg(user_id))[1] into v_count, v_uid from public.app_users where role = 'admin';",
-      "  if v_count <> 1 then",
-      "    raise exception 'Tam olarak bir yönetici bekleniyordu (bulunan: %). --admin-email ile belirtin.', v_count;",
-      "  end if;",
-    );
-  }
-  push(
-    "  -- İşlem fonksiyonları yönetici yetkisi ister; bu transaction boyunca yöneticinin kimliğiyle çalışılır.",
-    "  perform set_config('request.jwt.claims', json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);",
-    "  perform set_config('request.jwt.claim.sub', v_uid::text, true);",
     "end",
     "$$;",
     "",
+  ];
+}
+
+function sqlFooter(commit: boolean, label: string): string[] {
+  if (commit) {
+    return ["commit;", "", "select sira, adim, kod, sonuc, aciklama from _aktarim_rapor order by sira;", ""];
+  }
+  return [
+    "select sira, adim, kod, sonuc, aciklama from _aktarim_rapor order by sira;",
+    "",
+    "-- KURU ÇALIŞTIRMA: özet bilinçli bir hata mesajıyla verilir; hata transaction'ı her ortamda",
+    "-- (SQL Editor, psql) kesin olarak geri alır. Hiçbir değişiklik kaydedilmez.",
+    "do $$",
+    "declare v_ozet text;",
+    "begin",
+    "  select string_agg(format('%s %s: %s', adim, sonuc, n), '; ' order by adim, sonuc) into v_ozet",
+    "    from (select adim, sonuc, count(*) as n from _aktarim_rapor group by adim, sonuc) t;",
+    `  raise exception '${label} KURU ÇALIŞTIRMA TAMAMLANDI — hiçbir değişiklik kaydedilmedi. Gerçek aktarımda olacaklar: %', v_ozet`,
+    "    using errcode = 'P0001';",
+    "end",
+    "$$;",
+    "rollback;",
+    "",
+  ];
+}
+
+// ---------------------------------------------------------------- 1. adım: katalog SQL
+function buildCatalogSql(o: {
+  products: ProductDef[];
+  variantPrice: Map<string, { price: number; currency: Currency; source: string }>;
+  thresholds: { critical: number; watch: number } | null;
+  priceCurrency: Currency;
+  commit: boolean;
+}): string {
+  const t = o.thresholds ?? { critical: 0, watch: 0 };
+  const L: string[] = sqlHeader("Excel aktarımı 1. adım: KATALOG", o.commit, [
+    "Yalnızca ürün, varyant, kesin eşleşen satış fiyatları ve stok eşikleri. Kur, maliyet, stok, teslimat,",
+    "satış veya yönetici kimliği gerektirmez; stok defterine dokunmaz. Var olan ürün/varyant değiştirilmez.",
+  ]);
+  const push = (...s: string[]) => L.push(...s);
+  push(
     "-- 1) Ürünler (ürün grubu kodu SKU'dan türetilmiştir; varsa atlanır)",
     "create temp table _urun (",
     "  kod text primary key, ad text not null, varsayilan_fiyat numeric, para_birimi text,",
     "  ilk_varyant_kodu text not null, ilk_varyant_adi text not null, ilk_varyant_fiyat numeric, ilk_varyant_para text",
     ") on commit drop;",
     "insert into _urun values",
-  );
-  push(
     o.products
       .map((p) => {
         const first = p.variants[0];
@@ -654,7 +941,8 @@ function buildSql(o: {
     "insert into _yeni_urun select id, code from ekle;",
     "insert into _aktarim_rapor (adim, kod, sonuc, aciklama)",
     "select '1-urun', u.kod, case when y.id is null then 'zaten vardı' else 'eklendi' end,",
-    "       case when y.id is null then 'Değiştirilmedi.' else u.ad end",
+    "       case when y.id is null then 'Değiştirilmedi (fiyat ve eşikler dahil).'",
+    `            else u.ad || coalesce(' — satış fiyatı ' || u.varsayilan_fiyat || ' ' || u.para_birimi, '') || ' — eşikler ${t.critical}/${t.watch}/${t.watch}' end`,
     "  from _urun u left join _yeni_urun y on y.kod = u.kod order by u.kod;",
     "",
     "-- Ürün eklenince tetikleyici 'Standart' varyantı oluşturur; yeni ürünlerde bu varyant ilk SKU olur.",
@@ -696,7 +984,8 @@ function buildSql(o: {
     "            else 'zaten vardı' end,",
     "       case when pv.id is null then 'Aynı adlı varyant üründe var veya ürün bulunamadı; elle kontrol edin.'",
     "            when pp.code <> v.urun_kodu then 'Mevcut ürün: ' || pp.code || '. Değiştirilmedi.'",
-    "            else v.ad end",
+    "            when n.kod is null and y.id is null then 'Değiştirilmedi.'",
+    "            else v.ad || coalesce(' — satış fiyatı ' || v.fiyat || ' ' || v.para_birimi, '') end",
     "  from _varyant v",
     "  left join _yeni_varyant n on n.kod = v.kod",
     "  left join public.product_variants pv on pv.code = v.kod",
@@ -704,79 +993,145 @@ function buildSql(o: {
     "  left join _yeni_urun y on y.kod = v.urun_kodu and y.id = pv.product_id",
     " order by v.kod;",
     "",
-    `-- 3) Mevcut stok: Excel Stok Özeti kalanı (teslim − satış) ${o.stokTarihi} itibarıyla Mekonsis rafına devredilir.`,
-    "--    Yöntem: açılış stoğu (Heatemp, onaylı birim maliyetle) + aynı gün Mekonsis'e teslimat.",
-    "--    Geçmiş teslimat/satış satırları ayrıca girilmez; böylece aynı stok iki kez oluşmaz.",
-    "create temp table _acilis (kod text primary key, adet integer not null, birim_maliyet numeric not null,",
-    "                           para_birimi text not null, kaynak text not null) on commit drop;",
+    ...sqlFooter(o.commit, "KATALOG"),
   );
-  if (o.confirmed.length) {
+  return L.join("\n");
+}
+
+// ---------------------------------------------------------------- 2. adım: stok SQL
+function buildStockSql(o: { rows: OnayRow[]; approved: OnayRow[]; kur: KurBilgisi; adminEmail: string | null; commit: boolean }): string {
+  const k = o.kur;
+  const tatil = k.bultenTarihi !== k.stokTarihi;
+  const L: string[] = sqlHeader("Excel aktarımı 2. adım: STOK", o.commit, [
+    `Stok tarihi ${k.stokTarihi}: onaylanan kalanlar açılış stoğu (Heatemp) + aynı gün Mekonsis teslimatı olarak girer.`,
+    "Açılış stoğu üretim sayılmaz (üretilen adet / üretim harcaması artmaz); teslimat satış değildir (ciro/kâr oluşmaz).",
+    `Kur: TCMB ${k.kurTuru} ${k.kur} — bülten ${k.bultenTarihi}${k.bultenNo ? ` (no ${k.bultenNo})` : ""}${tatil ? `; ${k.stokTarihi} günü bülten yayımlanmadığı için önceki son bülten` : ""}.`,
+    `Kaynak: ${k.url}`,
+    "Önce katalog-aktarim.sql çalıştırılmış olmalıdır.",
+  ]);
+  const push = (...s: string[]) => L.push(...s);
+  push("-- 1) Yönetici kimliği (işlem fonksiyonları yönetici yetkisi ister; bu transaction boyunca kullanılır)", "do $$", "declare", "  v_uid uuid;", "  v_count integer;", "begin");
+  if (o.adminEmail) {
     push(
-      "insert into _acilis values",
-      o.confirmed
-        .map((c) => `  (${[sqlString(c.sku), c.qty, sqlNumber(c.cost), sqlString(c.currency), sqlString(c.source)].join(", ")})`)
-        .join(",\n") + ";",
+      "  select u.id into v_uid from auth.users u",
+      "    join public.app_users a on a.user_id = u.id and a.role = 'admin'",
+      `   where lower(u.email) = lower(${sqlString(o.adminEmail)});`,
+      "  if v_uid is null then",
+      `    raise exception 'Yönetici bulunamadı: %. Kullanıcı app_users tablosunda admin olmalı.', ${sqlString(o.adminEmail)};`,
+      "  end if;",
     );
   } else {
-    push("-- (onaylı birim maliyet yok: açılış stoğu oluşturulmayacak)");
+    push(
+      "  select count(*), (array_agg(user_id))[1] into v_count, v_uid from public.app_users where role = 'admin';",
+      "  if v_count <> 1 then",
+      "    raise exception 'Tam olarak bir yönetici bekleniyordu (bulunan: %). Paketi --admin-email ile yeniden üretin.', v_count;",
+      "  end if;",
+    );
   }
   push(
+    "  perform set_config('request.jwt.claims', json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);",
+    "  perform set_config('request.jwt.claim.sub', v_uid::text, true);",
+    "end",
+    "$$;",
+    "",
+    "-- 2) stok-onay.xlsx'te onaylanan satırlar (negatif kalanlı ve fiyat eşleşmesi belirsiz kodlar hariç)",
+    "create temp table _acilis (kod text primary key, adet integer not null, birim_maliyet numeric not null,",
+    "                           para_birimi text not null, kaynak text not null) on commit drop;",
+    "insert into _acilis values",
+    o.approved
+      .map((r) => {
+        const src = `stok-onay.xlsx (kullanıcı onayı)${r.approvedNote ? `: ${r.approvedNote}` : ""}`;
+        return `  (${[sqlString(r.sku), r.remaining, sqlNumber(r.approvedCost), sqlString(r.approvedCurrency), sqlString(src)].join(", ")})`;
+      })
+      .join(",\n") + ";",
     "",
     "do $$",
+    "declare v_eksik text;",
+    "begin",
+    "  select string_agg(a.kod, ', ' order by a.kod) into v_eksik",
+    "    from _acilis a where not exists (select 1 from public.product_variants v where v.code = a.kod);",
+    "  if v_eksik is not null then",
+    "    raise exception 'Şu varyantlar veritabanında yok: %. Önce katalog-aktarim.sql çalıştırın.', v_eksik;",
+    "  end if;",
+    "end",
+    "$$;",
+    "",
+    "-- 3) Stok tarihinin TCMB kuru (paket üretilirken TCMB arşivinden alındı; bugünün kuru kullanılmaz)",
+    "create temp table _kur (id bigint not null) on commit drop;",
+    "do $$",
     "declare",
-    `  v_date date := date ${sqlString(o.stokTarihi)};`,
-    "  v_fx bigint;",
+    `  v_stok date := date ${sqlString(k.stokTarihi)};`,
+    `  v_bulten date := date ${sqlString(k.bultenTarihi)};`,
+    `  v_kur numeric := ${sqlNumber(k.kur)};`,
+    "  v_max integer;",
+    "  v_id bigint;",
+    "  v_row public.fx_rates;",
+    "begin",
+    "  select fx_max_age_days into v_max from public.app_settings where id;",
+    "  if v_stok - v_bulten > coalesce(v_max, 4) then",
+    "    raise exception 'Stok tarihi % için son TCMB bülteni % tarihli (% gün önce); Ayarlar''daki kur yaşı sınırı % gün. Uzun tatil ise sınırı geçici olarak artırıp tekrar çalıştırın.',",
+    "      to_char(v_stok, 'DD.MM.YYYY'), to_char(v_bulten, 'DD.MM.YYYY'), v_stok - v_bulten, coalesce(v_max, 4);",
+    "  end if;",
+    `  v_id := public.record_auto_fx_rate('TCMB', ${sqlString(k.kurTuru)}, v_kur, v_bulten,`,
+    `    ${sqlString(JSON.stringify(k.raw))}::jsonb);`,
+    "  select * into v_row from public.fx_rates where id = v_id;",
+    "  if v_row.rate <> round(v_kur, 6) then",
+    "    raise exception 'Veritabanında % tarihli TCMB % kuru % olarak kayıtlı, TCMB arşivindeki değer %. Farkı inceleyin; aktarım yapılmadı.',",
+    `      to_char(v_bulten, 'DD.MM.YYYY'), ${sqlString(k.kurTuru)}, v_row.rate, v_kur;`,
+    "  end if;",
+    "  insert into _kur values (v_id);",
+    "  insert into _aktarim_rapor (adim, kod, sonuc, aciklama)",
+    `  values ('3-kur', 'USD/TRY', 'TCMB ${k.kurTuru} ' || v_kur,`,
+    `          'Stok tarihi ' || to_char(v_stok, 'DD.MM.YYYY') || ', kaynak bülten ' || to_char(v_bulten, 'DD.MM.YYYY')${tatil ? " || ' (stok günü bülten yayımlanmadı; önceki son bülten)'" : ""} || ', fx_rates.id ' || v_id);`,
+    "end",
+    "$$;",
+    "",
+    "-- 4) Açılış stoğu + aynı gün Mekonsis teslimatı. Varyantın stok hareketi varsa atlanır (çift stok oluşmaz).",
+    "do $$",
+    "declare",
+    `  v_date date := date ${sqlString(k.stokTarihi)};`,
+    "  v_fx bigint := (select id from _kur);",
     "  v_variant uuid;",
     "  v_batch uuid;",
     "  r record;",
     "begin",
-    "  if exists (select 1 from _acilis) then",
-    "    select f.id into v_fx from public.fx_rate_for_date(v_date) f where f.is_valid;",
-    "    if v_fx is null then",
-    "      raise exception 'Stok tarihi % için geçerli USD/TRY kuru yok. Uygulamada Ayarlar > Manuel kur girişi ile bu tarihe kur girin (veya otomatik kuru alın) ve tekrar çalıştırın.', v_date;",
-    "    end if;",
-    "  end if;",
     "  for r in select * from _acilis order by kod loop",
     "    select id into v_variant from public.product_variants where code = r.kod;",
-    "    if v_variant is null then",
-    "      insert into _aktarim_rapor (adim, kod, sonuc, aciklama) values ('3-stok', r.kod, 'ATLANDI', 'Varyant yok.');",
-    "      continue;",
-    "    end if;",
     "    if exists (select 1 from public.production_batches where variant_id = v_variant)",
     "       or exists (select 1 from public.deliveries where variant_id = v_variant) then",
     "      insert into _aktarim_rapor (adim, kod, sonuc, aciklama)",
-    "      values ('3-stok', r.kod, 'zaten vardı', 'Varyantın stok hareketi var (önceki aktarım veya elle giriş); çift stok oluşturulmadı.');",
+    "      values ('4-stok', r.kod, 'zaten vardı', 'Varyantın stok hareketi var (önceki aktarım veya elle giriş); çift stok oluşturulmadı.');",
     "      continue;",
     "    end if;",
     "    v_batch := public.record_opening_stock(",
     "      v_variant, r.adet, r.birim_maliyet, r.para_birimi, v_fx, v_date,",
-    `      'Excel devri (Mekonsis_Heatamp_Stok_Takip, Stok Özeti kalan). Maliyet: ' || r.kaynak,`,
+    `      'Excel devri (Mekonsis_Heatamp_Stok_Takip, Stok Özeti kalan, ' || to_char(v_date, 'DD.MM.YYYY') || '). Maliyet: ' || r.kaynak,`,
     `      md5(${sqlString(SEED + ":acilis:")} || r.kod)::uuid);`,
     "    perform public.deliver_to_mekonsis(",
     "      v_variant, r.adet, v_batch, v_date,",
-    "      'Excel devri: Mekonsis rafındaki kalan',",
+    "      'Excel devri: Mekonsis rafındaki kalan (satış değildir)',",
     `      md5(${sqlString(SEED + ":teslimat:")} || r.kod)::uuid);`,
     "    insert into _aktarim_rapor (adim, kod, sonuc, aciklama)",
-    "    values ('3-stok', r.kod, 'eklendi', r.adet || ' adet açılış + Mekonsis teslimatı, birim maliyet ' || r.birim_maliyet || ' ' || r.para_birimi);",
+    "    values ('4-stok', r.kod, 'eklendi', r.adet || ' adet açılış + Mekonsis teslimatı, birim maliyet ' || r.birim_maliyet || ' ' || r.para_birimi);",
     "  end loop;",
     "end",
     "$$;",
     "",
   );
-  const waiting = o.pending.map(
-    (s) => `  (${[sqlString("3-stok"), sqlString(s.sku), sqlString("BEKLİYOR"), sqlString(`${s.remaining} adet — birim maliyet onayı yok (onay.json)`)].join(", ")})`,
-  );
-  const blocked = o.stock
-    .filter((s) => s.remaining <= 0)
-    .map(
-      (s) =>
-        `  (${[sqlString("3-stok"), sqlString(s.sku), sqlString(s.remaining < 0 ? "AKTARILMADI" : "stok yok"), sqlString(s.remaining < 0 ? `Kalan ${s.remaining}: satılan teslim edilenden fazla (çelişki)` : "Kalan 0")].join(", ")})`,
-    );
-  if (waiting.length || blocked.length) {
-    push("insert into _aktarim_rapor (adim, kod, sonuc, aciklama) values", [...waiting, ...blocked].join(",\n") + ";", "");
-  }
+  const info = o.rows
+    .filter((r) => r.status !== "Onaylandı")
+    .map((r) => {
+      const [sonuc, aciklama] =
+        r.status === "Onay bekliyor"
+          ? ["BEKLİYOR", `${r.remaining} adet — stok-onay.xlsx'te birim maliyet onayı yok`]
+          : r.status === "Stok yok"
+            ? ["stok yok", "Kalan 0"]
+            : ["HARİÇ", `${r.status.replace("HARİÇ: ", "")} (kalan ${r.remaining}); netleştirilene kadar aktarılmaz`];
+      return `  (${[sqlString("4-stok"), sqlString(r.sku), sqlString(sonuc), sqlString(aciklama)].join(", ")})`;
+    });
+  if (info.length) push("insert into _aktarim_rapor (adim, kod, sonuc, aciklama) values", info.join(",\n") + ";", "");
   push(
-    "-- 4) Tutarlılık: stok defteri bakiyeleri hareketlerle uyumlu olmalı",
+    "-- 5) Tutarlılık: stok defteri bakiyeleri hareketlerle uyumlu olmalı",
     "do $$",
     "begin",
     "  if exists (select 1 from public.ledger_inconsistencies()) then",
@@ -785,33 +1140,8 @@ function buildSql(o: {
     "end",
     "$$;",
     "",
+    ...sqlFooter(o.commit, "STOK"),
   );
-  if (o.commit) {
-    push(
-      "commit;",
-      "",
-      "select sira, adim, kod, sonuc, aciklama from _aktarim_rapor order by sira;",
-      "",
-    );
-  } else {
-    push(
-      "select sira, adim, kod, sonuc, aciklama from _aktarim_rapor order by sira;",
-      "",
-      "-- KURU ÇALIŞTIRMA: özet bilinçli bir hata mesajıyla verilir; hata transaction'ı her ortamda",
-      "-- (SQL Editor, psql) kesin olarak geri alır. Hiçbir değişiklik kaydedilmez.",
-      "do $$",
-      "declare v_ozet text;",
-      "begin",
-      "  select string_agg(format('%s %s: %s', adim, sonuc, n), '; ' order by adim, sonuc) into v_ozet",
-      "    from (select adim, sonuc, count(*) as n from _aktarim_rapor group by adim, sonuc) t;",
-      "  raise exception 'KURU ÇALIŞTIRMA TAMAMLANDI — hiçbir değişiklik kaydedilmedi. Gerçek aktarımda olacaklar: %', v_ozet",
-      "    using errcode = 'P0001';",
-      "end",
-      "$$;",
-      "rollback;",
-      "",
-    );
-  }
   return L.join("\n");
 }
 
@@ -831,40 +1161,51 @@ function buildReport(o: {
   blocks: CostBlock[];
   rates: number[];
   thresholds: { critical: number; watch: number } | null;
-  stock: StockLine[];
-  confirmed: { sku: string; qty: number; cost: number; currency: Currency }[];
-  pending: StockLine[];
+  rows: OnayRow[];
+  approved: OnayRow[];
   issues: Issue[];
-  stokTarihi: string;
-  onayPath: string;
+  kur: KurBilgisi | null;
+  stokDurum: string;
 }): string {
   const variantCount = o.products.reduce((a, p) => a + p.variants.length, 0);
-  const pos = o.stock.filter((s) => s.remaining > 0);
+  const pos = o.rows.filter((r) => r.remaining > 0);
   const stockedSkus = new Set(o.summary.map((s) => s.sku));
+  const priced = o.products.filter((p) => p.defaultPrice !== null).length + o.variantPrice.size;
   const L: string[] = [];
   L.push(
     `# Excel aktarım raporu — ${o.excelName}`,
     "",
-    `Stok tarihi (devir): **${o.stokTarihi}** · Otomatik üretildi (\`scripts/excel-aktarim.ts\`). Veritabanına bağlanılmadı.`,
+    "Otomatik üretildi (`scripts/excel-aktarim.ts`). Veritabanına bağlanılmadı.",
+    "",
+    "## Çalıştırma sırası",
+    "",
+    "| Adım | Dosya | Gerekenler | Durum |",
+    "|---|---|---|---|",
+    `| 1. Katalog | \`katalog-aktarim-kuru.sql\` → \`katalog-aktarim.sql\` | Yok (kur, maliyet, yönetici gerekmez) | Hazır: ${o.products.length} ürün, ${variantCount} varyant, ${priced} kesin fiyat, eşikler |`,
+    `| 2. Stok | \`stok-aktarim-kuru.sql\` → \`stok-aktarim.sql\` | Stok tarihi, \`stok-onay.xlsx\`'te onaylı maliyet, TCMB kuru (otomatik) | ${o.stokDurum} |`,
+    "",
+    "Her dosya tek transaction'dır, tekrar çalıştırılabilir, mevcut kayıtları silmez veya değiştirmez. Kuru",
+    "çalıştırma aynı işlemleri yapıp sonunda bir özet hatası vererek her şeyi geri alır.",
     "",
     "## Sayfa bazında karar",
     "",
     "| Sayfa | İçerik | Aktarım |",
     "|---|---|---|",
-    `| Ürünler | ${o.catalog.length} ürün kodu (katalog) | Ürün + varyant olarak |`,
-    `| Stok Özeti | ${o.summary.length} kodun giren/satış/kalan özeti, durum eşikleri | Eşikler ürünlere; kalan yalnızca doğrulama için (detaydan yeniden hesaplandı) |`,
-    `| Teslimat Detayı | ${o.deliveries.length} satır (tarih, adet) | Stok defterine girmez; net kalan hesabında kullanılır, gecmis-hareketler.csv'ye arşivlenir |`,
-    `| Satış Detayı | ${o.sales.length} satır (tarih, adet, fatura no) — fiyat yok | Satış olarak girmez (fiyat yok → ciro/kâr uydurulmaz); net kalan hesabında kullanılır, arşivlenir |`,
-    `| Satış Fiyatları | ${o.priceRows.length} ürün tipi için maliyet ve satış (USD) | Satış fiyatı → varsayılan fiyat (${o.priceRows.length - o.priceNotApplied.length} eşleşti); maliyet → yalnızca açılış maliyeti adayı |`,
+    `| Ürünler | ${o.catalog.length} ürün kodu (katalog) | 1. adım: ürün + varyant |`,
+    `| Stok Özeti | ${o.summary.length} kodun giren/satış/kalan özeti, durum eşikleri | 1. adım: eşikler; kalan yalnızca doğrulama (detaydan yeniden hesaplandı) |`,
+    `| Teslimat Detayı | ${o.deliveries.length} satır (tarih, adet) | Stok defterine tek tek girmez; net kalan hesabında kullanılır, gecmis-hareketler.csv'ye arşivlenir |`,
+    `| Satış Detayı | ${o.sales.length} satır (tarih, adet, fatura no) — fiyat yok | Satış olarak girmez (ciro/kâr uydurulmaz); net kalan hesabında kullanılır, arşivlenir |`,
+    `| Satış Fiyatları | ${o.priceRows.length} ürün tipi için maliyet ve satış (USD) | 1. adım: kesin eşleşen ${priced} satış fiyatı; maliyetler yalnızca stok-onay.xlsx'te aday |`,
     `| Satış Fiyatları (simülasyon, 3'e bölüşüm, Mekonsis referansları) | Senaryo/referans tabloları | Aktarılmaz |`,
-    `| Ürün Maliyet | ${o.blocks.length} maliyet dökümü | Reçete (BOM) ve hammadde oluşturulmaz (bkz. aşağı); rapor olarak kalır |`,
+    `| Ürün Maliyet | ${o.blocks.length} maliyet dökümü | Reçete (BOM) ve hammadde oluşturulmaz; toplamlar stok-onay.xlsx'te aday 2 |`,
     "",
     `Sayfalar: ${o.sheetNames.join(", ")}.`,
     "",
-    "## Ürün ve varyantlar",
+    "## 1. adım — Katalog",
     "",
     `**${o.products.length} ürün, ${variantCount} varyant.** Excel ürün kodu varyant kodu olarak aynen korunur; ürün grubu kodu`,
     "sensör elemanı (NTC10K/NTC20K/PT1000) çıkarılarak türetilmiştir (ör. HT-NTC10K-K-50mm → ürün HT-K-50mm).",
+    "Var olan ürün veya varyant kodu atlanır; fiyatı, eşikleri ve adı değiştirilmez.",
     "",
     "| Ürün kodu | Ürün adı | Varyantlar | Varsayılan satış fiyatı | Excel stok özetinde |",
     "|---|---|---|---|---|",
@@ -883,9 +1224,9 @@ function buildReport(o: {
   }
   L.push("", "\\* türetilmiş grup kodu (değiştirilebilir).", "");
   L.push(
-    `Tüm ürünlere: birim üretim süresi **0 (Excel'de yok)**, stok eşikleri Excel "Durum" kuralından kritik ≤ ${o.thresholds?.critical}, minimum ≤ ${o.thresholds?.watch}, hedef ${o.thresholds?.watch} (Excel notuna göre varsayım).`,
+    `Tüm yeni ürünlere: birim üretim süresi **0 (Excel'de yok)**, stok eşikleri Excel "Durum" kuralından kritik ≤ ${o.thresholds?.critical}, minimum ≤ ${o.thresholds?.watch}, hedef ${o.thresholds?.watch} (Excel notuna göre varsayım).`,
     "",
-    "Fiyat eşleşmesi olmayan satırlar:",
+    "Fiyatı aktarılmayan Satış Fiyatları satırları (kesin eşleşme yok):",
     "",
   );
   for (const n of o.priceNotApplied) {
@@ -895,37 +1236,40 @@ function buildReport(o: {
   L.push("", `Satış fiyatı olmayan ürünler (${noPrice.length}): ${noPrice.map((p) => p.code).join(", ")}.`, "");
 
   L.push(
-    "## Stok aktarım yöntemi",
+    "## 2. adım — Stok (onay tablosu: `stok-onay.xlsx`)",
     "",
     "1. Excel yalnızca **Mekonsis rafını** izliyor: kalan = teslim edilen − satılan (detay sayfalarından yeniden hesaplandı).",
-    "2. Satışlarda fiyat, teslimatlarda parti maliyeti olmadığı için geçmiş hareketler stok defterine **tek tek girilmez**.",
-    `3. Pozitif kalan, ${o.stokTarihi} tarihinde **açılış stoğu** (Heatemp, gerçek birim maliyetle) + **aynı gün Mekonsis'e teslimat** olarak girer.`,
-    "   Böylece stok yalnızca bir kez oluşur; ERP'de satış ve ciro geçmişi sıfırdan başlar.",
-    "4. Açılış stoğu yalnızca **birim maliyeti onaylanan** kodlar için oluşturulur (`" + o.onayPath + "`). Excel'deki maliyetler",
-    "   parti maliyeti değil tahmini maliyettir; otomatik kullanılmaz.",
-    "5. Heatemp'in kendi rafındaki stok Excel'de yok → aktarılmaz.",
-    "6. Kalanı negatif çıkan kodlar aktarılmaz (çelişki).",
+    "2. Geçmiş teslimat ve satışlar tek tek girilmez (satış fiyatı ve parti maliyeti yok). Pozitif kalan, stok tarihinde",
+    "   **açılış stoğu** + **aynı gün Mekonsis'e teslimat** olarak bir kez girer; stok iki kez oluşmaz.",
+    "3. Açılış stoğu **üretim sayılmaz**: Dashboard'daki üretilen adet ve üretim harcaması artmaz (açılış değeri ayrı",
+    "   gösterilir). Mekonsis'e aktarım **satış değildir**: ciro ve kâr oluşmaz; stok Heatemp'in varlığı olarak kalır.",
+    "4. Yalnızca `stok-onay.xlsx`'te **ONAYLANAN birim maliyet ve para birimi** yazılan satırlar aktarılır. Excel'deki",
+    "   adaylar yalnızca bilgi içindir.",
+    "5. **Negatif kalanlı** ve **fiyat eşleşmesi belirsiz** kodlar, maliyet girilse bile siz netleştirene kadar hariçtir.",
+    "6. Kur: stok tarihindeki **TCMB bülteni** otomatik alınır; hafta sonu/tatilse önceki son bülten, kaynak tarihiyle",
+    "   kaydedilir. Bugünün kuru geçmiş tarihe uygulanmaz; manuel kur gerekmez.",
     "",
-    "| Kod | Teslim | Satış | Kalan | Durum | Excel maliyet adayı |",
-    "|---|---:|---:|---:|---|---|",
   );
-  for (const s of o.stock) {
-    const c = o.confirmed.find((x) => x.sku === s.sku);
-    const state =
-      s.remaining < 0 ? "**aktarılmaz (negatif)**" : s.remaining === 0 ? "stok yok" : c ? `açılış: ${c.cost} ${c.currency}` : "maliyet onayı bekliyor";
-    const product = o.products.find((p) => p.variants.some((v) => v.sku === s.sku));
-    const cand = o.priceRows
-      .filter((pr) => {
-        const t = PRICE_TARGETS[pr.product.trim()];
-        return t && t.level !== "none" && (t.code === product?.code || t.code === s.sku);
-      })
-      .map((pr) => `${pr.cost} ${pr.costCurrency}`)
-      .join(", ");
-    L.push(`| ${s.sku} | ${s.delivered} | ${s.sold} | ${s.remaining} | ${state} | ${cand || "yok"} |`);
+  if (o.kur) {
+    L.push(
+      `**Kur:** TCMB ${o.kur.kurTuru} **${o.kur.kur}** — stok tarihi ${o.kur.stokTarihi}, kaynak bülten ${o.kur.bultenTarihi}${o.kur.bultenNo ? ` (no ${o.kur.bultenNo})` : ""}${o.kur.bultenTarihi !== o.kur.stokTarihi ? " — stok günü bülten yayımlanmadığı için önceki son bülten" : ""}. Kaynak: ${o.kur.url}`,
+      "",
+    );
+  }
+  L.push(
+    "| Ürün kodu | Ürün adı (Excel) | Mekonsis kalan | Aday 1 (Satış Fiyatları) | Aday 2 (Ürün Maliyet dökümü) | Onaylanan | Stok aktarımı | Açıklama |",
+    "|---|---|---:|---|---|---|---|---|",
+  );
+  for (const r of o.rows) {
+    const a1 = r.aday1 ? `${fmtN(r.aday1.value)} ${r.aday1.currency}` : "";
+    const a2 = r.aday2 ? `${fmtN(r.aday2.value)} ${r.aday2.currency}${r.aday2.currency !== "USD" && r.aday2.usd !== null ? ` (≈${fmtN(r2(r.aday2.usd))} USD)` : ""}` : "";
+    const ok = r.approvedCost !== null ? `${fmtN(r.approvedCost)} ${r.approvedCurrency ?? ""}` : "";
+    const desc = r.notes.filter((n) => !n.startsWith("Kaynak:")).join(" ");
+    L.push(`| ${r.sku} | ${r.excelName} | ${r.remaining} | ${a1} | ${a2} | ${ok} | ${r.status} | ${desc.replace(/\|/g, "\\|")} |`);
   }
   L.push(
     "",
-    `Pozitif kalan: **${pos.length} kod, ${pos.reduce((a, s) => a + s.remaining, 0)} adet**; onaylı maliyetle aktarılacak: ${o.confirmed.length} kod, ${o.confirmed.reduce((a, s) => a + s.qty, 0)} adet; bekleyen: ${o.pending.length} kod.`,
+    `Pozitif kalan: **${pos.length} kod, ${pos.reduce((a, r) => a + r.remaining, 0)} adet**; onaylı: ${o.approved.length} kod, ${o.approved.reduce((a, r) => a + r.remaining, 0)} adet; hariç: ${o.rows.filter((r) => r.status.startsWith("HARİÇ")).map((r) => r.sku).join(", ") || "yok"}.`,
     "",
     "## Hammadde ve reçete (BOM)",
     "",
@@ -945,7 +1289,7 @@ function buildReport(o: {
   }
   L.push(
     "",
-    `Excel'de sabit kurlar kullanılmış (${o.rates.join(", ")} ve simülasyonda 48); ERP bunları kullanmaz, işlem günü kuru gerekir.`,
+    `Excel'de sabit kurlar kullanılmış (${o.rates.join(", ")} ve simülasyonda 48); ERP bunları kullanmaz, stok tarihinin TCMB kuru kullanılır.`,
     "",
     "## Eksik ve çelişkili alanlar",
     "",
@@ -961,6 +1305,7 @@ function buildReport(o: {
     `| eksik | Tüm ürünler | Reçete (BOM) ve malzeme miktarları yok; üretim simülasyonu/başlatma için reçete girilmeli. |`,
     `| eksik | Satış Detayı | Birim satış fiyatı ve para birimi yok; geçmiş satışlar ciro/kâr olarak aktarılamaz. |`,
     `| eksik | Heatemp rafı | Heatemp'in kendi elindeki mamul stoğu Excel'de yok. |`,
+    `| eksik | Stok | Excel kalanlarının geçerli olduğu kesin stok tarihi dosyada yok (siz belirleyeceksiniz). |`,
     "",
     "## Aktarılmayan veriler",
     "",

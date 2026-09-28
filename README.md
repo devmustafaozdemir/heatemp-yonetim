@@ -101,17 +101,23 @@ Canlıya alırken barındırma ortamında (ör. Vercel) aynı değişkenleri tan
 ## Excel verisinin aktarımı
 
 Mevcut `Mekonsis_Heatamp_Stok_Takip` Excel'i için salt okunur bir aktarım paketi üreticisi vardır
-(ayrıntı: [`docs/EXCEL_ALAN_ESLESTIRME.md`](docs/EXCEL_ALAN_ESLESTIRME.md)):
+(ayrıntı: [`docs/EXCEL_ALAN_ESLESTIRME.md`](docs/EXCEL_ALAN_ESLESTIRME.md)). Aktarım iki adımdır:
 
 ```bash
-npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx" --stok-tarihi 2026-09-28
-bash scripts/excel-aktarim-test.sh   # yerel temiz veritabanında test
+# 1. adım — katalog: ürün, varyant, kesin eşleşen satış fiyatları, stok eşikleri (kur/maliyet gerekmez)
+npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx"
+# import/excel-aktarim/stok-onay.xlsx'te birim maliyetleri onaylayın, ardından
+# 2. adım — stok: stok tarihinin TCMB kuru otomatik alınır (www.tcmb.gov.tr erişimi gerekir)
+npm run excel:aktarim -- --excel "referans/Mekonsis_Heatamp_Stok_Takip (1).xlsx" --stok-tarihi YYYY-AA-GG
+bash scripts/excel-aktarim-test.sh   # yerel temiz veritabanında, sahte TCMB arşiviyle uçtan uca test
 ```
 
-Çıktılar `import/excel-aktarim/` altındadır (git dışında): `RAPOR.md`, `onay.json` (açılış maliyeti onayları),
-`gecmis-hareketler.csv`, `aktarim-kuru.sql` (kaydetmeden dener) ve `aktarim.sql` (tek transaction, tekrar
-çalıştırılabilir, silme yapmaz). SQL dosyaları Supabase SQL Editor'de çalıştırılır; tek yönetici varsa onun
-kimliğiyle çalışır (birden fazlaysa `--admin-email`).
+Çıktılar `import/excel-aktarim/` altındadır (git dışında): `katalog-aktarim(-kuru).sql`, `stok-onay.xlsx`
+(kontrol/onay tablosu), `stok-aktarim(-kuru).sql` (yalnızca stok tarihi ve onaylı maliyet varsa), `RAPOR.md`,
+`gecmis-hareketler.csv`. SQL dosyaları Supabase SQL Editor'de önce `-kuru` sürümüyle (hiçbir şey kaydetmez)
+çalıştırılır; her biri tek transaction'dır, tekrar çalıştırılabilir, mevcut kayıtları silmez veya değiştirmez.
+Stok adımı tek yönetici varsa onun kimliğiyle çalışır (birden fazlaysa `--admin-email`). Açılış stoğu üretim
+sayılmaz, Mekonsis'e aktarım ciro/kâr oluşturmaz.
 
 ## Migration dosyaları
 

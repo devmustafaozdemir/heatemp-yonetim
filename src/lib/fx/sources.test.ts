@@ -33,6 +33,17 @@ describe("TCMB ayrıştırma", () => {
   it("arşiv URL'sini doğru kurar", () => {
     expect(tcmbUrl("2026-09-05")).toBe("https://www.tcmb.gov.tr/kurlar/202609/05092026.xml");
     expect(tcmbUrl(null)).toBe("https://www.tcmb.gov.tr/kurlar/today.xml");
+    expect(tcmbUrl("2026-09-05", "http://127.0.0.1:9/kurlar")).toBe("http://127.0.0.1:9/kurlar/202609/05092026.xml");
+  });
+
+  it("tarih verilince bugünün bültenini istemez; farklı kaynak adresi kullanılabilir", async () => {
+    const calls: string[] = [];
+    const fetcher = async (url: string) => {
+      calls.push(url);
+      return url.endsWith("25092026.xml") ? new Response(SAMPLE, { status: 200 }) : new Response("", { status: 404 });
+    };
+    await fetchTcmb("2026-09-25", "ForexBuying", { fetcher, baseUrl: "http://yerel/kurlar" });
+    expect(calls).toEqual(["http://yerel/kurlar/202609/25092026.xml"]);
   });
 
   it("hafta sonu için önceki iş gününe gider", async () => {
