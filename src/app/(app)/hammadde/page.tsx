@@ -1,4 +1,4 @@
-import { AlertOctagon, ArrowDownToLine, Boxes, ChevronRight, ListTree, PackageX, Plus, ShieldCheck, Wallet } from "lucide-react";
+import { AlertOctagon, ArrowDownToLine, Boxes, ChevronRight, Handshake, ListTree, PackageX, Plus, ShieldCheck, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -12,7 +12,7 @@ import { fmtDate, fmtInt, fmtMoney, fmtNum, fmtUnitMoney, todayTr } from "@/lib/
 import { hrefWith, parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
 import { addDays, buckets } from "@/lib/period";
 import { load } from "@/lib/query";
-import type { Unit } from "@/lib/types";
+import type { SupplierListRow, SupplierOption, Unit } from "@/lib/types";
 import { KindBadge, ListValue, MaterialStateBadge } from "./_components/bits";
 import { ClearParamsOnClose } from "./_components/ClearParamsOnClose";
 import { MonthlyFlowChart, type MonthlyFlowPoint } from "./_components/MonthlyFlowChart";
@@ -22,6 +22,7 @@ import { toOption, type MaterialListRow, type MonthlyFlowRow } from "./_componen
 import { createMaterial } from "./actions";
 import { MaterialFields } from "./MaterialForm";
 import { ReceiveForm } from "./ReceiveForm";
+import { SupplierSpendChart } from "./_components/SupplierSpendChart";
 
 export const metadata: Metadata = { title: "Hammadde" };
 
@@ -87,13 +88,36 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
     tableQuery = tableQuery.order(sortKey, { ascending: lp.dir === "asc", nullsFirst: false });
   }
 
-  const [res, all, flows, units] = await Promise.all([
+  const [res, all, flows, units, supplierRes, vatRes] = await Promise.all([
     loadPage(tableQuery.order("name", { ascending: true }).order("code", { ascending: true }).range(lp.from, lp.to).returns<MaterialListRow[]>()),
     // Özet kartları ve grafikler: filtreden bağımsız, tüm malzemeler (güncel stok)
     load(ctx.supabase.from("v_material_list").select("*", { count: "exact" }).order("name").returns<MaterialListRow[]>()),
     load<MonthlyFlowRow[]>(ctx.supabase.rpc("material_monthly_flows", { p_from: monthFrom })),
     load(ctx.supabase.from("units").select("*").order("sort_order").returns<Unit[]>()),
+    // Tedarikçi seçimi ve "tedarikçilere ödenen tutar" grafiği aynı görünümden
+    load(ctx.supabase.from("v_supplier_list").select("*").order("total_try", { ascending: false }).returns<SupplierListRow[]>()),
+    load(ctx.supabase.from("raw_materials").select("id, vat_rate").returns<{ id: string; vat_rate: number }[]>()),
   ]);
+  const vatRates = new Map((vatRes.data ?? []).map((r) => [r.id, Number(r.vat_rate)]));
+  const withVat = (m: MaterialListRow) => ({ ...toOption(m), vat_rate: vatRates.get(m.id) ?? 20 });
+  const supplierRows = supplierRes.data ?? [];
+  const suppliers: SupplierOption[] = supplierRows
+    .map((x) => ({ id: x.id, name: x.name, is_active: x.is_active }))
+    .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+  const supplierSpend = supplierRows
+    .map((x) => ({
+      key: x.id,
+      label: x.name,
+      value: Number(x.total_try) + Number(x.vat_try ?? 0),
+      vat: Number(x.vat_try ?? 0),
+      usd: Number(x.total_usd),
+      count: Number(x.purchase_count),
+    }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+  const supplierTotalTry = supplierRows.reduce((sum, x) => sum + Number(x.total_try) + Number(x.vat_try ?? 0), 0);
+  const supplierVatTry = supplierRows.reduce((sum, x) => sum + Number(x.vat_try ?? 0), 0);
 
   // Eski / paylaşılmış bağlantıda sayfa numarası sonuç sayısını aşıyorsa son geçerli sayfaya git.
   if (res.outOfRange) {
@@ -152,12 +176,14 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
   );
 
   const allUnits = units.data ?? [];
-  const receiveOptions = active.map(toOption);
+  const receiveOptions = active.map(withVat);
   const rows = res.data ?? [];
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath: BASE, values };
   const filtered = Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k));
   const rowAction = (m: MaterialListRow) =>
-    isAdmin && m.is_active ? <RowReceiveDrawer m={m} units={allUnits} unitsError={units.error} today={today} /> : null;
+    isAdmin && m.is_active ? (
+      <RowReceiveDrawer m={m} vatRate={vatRates.get(m.id) ?? 20} units={allUnits} unitsError={units.error} suppliers={suppliers} today={today} />
+    ) : null;
 
   const attentionTitle = critical.length > 0 ? "Dikkat gerektirenler" : "Reçete stok kapsamı";
   const attentionDescription =
@@ -198,7 +224,7 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
                       Önce “Yeni malzeme” ile bir malzeme tanımlayın.
                     </EmptyState>
                   ) : (
-                    <ReceiveForm materials={receiveOptions} initialMaterialId={lp.values.malzeme} units={allUnits} today={today} />
+                    <ReceiveForm materials={receiveOptions} initialMaterialId={lp.values.malzeme} units={allUnits} suppliers={suppliers} today={today} />
                   )}
                 </Drawer>
               </ClearParamsOnClose>
@@ -395,6 +421,38 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
               </div>
             </Card>
           </div>
+
+          <Card
+            className="mb-4"
+            title="Tedarikçilere ödenen tutar"
+            icon={Handshake}
+            description="Tüm zamanlar · hammadde alışları · KDV dahil TL (alış günü kuruyla) · ilk 10 tedarikçi"
+            actions={
+              <Link href="/tedarikciler" className="link text-xs">
+                Tedarikçiler
+              </Link>
+            }
+            padded={false}
+          >
+            {supplierRes.error ? (
+              <ErrorState message={supplierRes.error} compact />
+            ) : (
+              <>
+                <div className="p-4 pb-3">
+                  <SupplierSpendChart data={supplierSpend} />
+                </div>
+                <div className="border-t border-line">
+                  <MetricRow
+                    items={[
+                      { label: "Toplam ödenen (KDV dahil)", value: fmtMoney(supplierTotalTry, "TRY") },
+                      { label: "KDV", value: fmtMoney(supplierVatTry, "TRY") },
+                      { label: "Alış yapılan", value: fmtInt(supplierRows.filter((x) => Number(x.purchase_count) > 0).length) },
+                    ]}
+                  />
+                </div>
+              </>
+            )}
+          </Card>
         </>
       )}
 
@@ -648,7 +706,21 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
 }
 
 /** Satır işlemi: malzemeye sabitli stok girişi penceresi. Birimler yüklenemezse pencere içinde hata gösterilir. */
-function RowReceiveDrawer({ m, units, unitsError, today }: { m: MaterialListRow; units: Unit[]; unitsError: string | null; today: string }) {
+function RowReceiveDrawer({
+  m,
+  vatRate,
+  units,
+  unitsError,
+  suppliers,
+  today,
+}: {
+  m: MaterialListRow;
+  vatRate: number;
+  units: Unit[];
+  unitsError: string | null;
+  suppliers: SupplierOption[];
+  today: string;
+}) {
   const kindUnits = units.filter((u) => u.kind === m.unit_kind);
   return (
     <Drawer
@@ -672,7 +744,7 @@ function RowReceiveDrawer({ m, units, unitsError, today }: { m: MaterialListRow;
           Bu malzemenin birim türünde tanımlı birim yok; alış kaydedilemez.
         </EmptyState>
       ) : (
-        <ReceiveForm material={toOption(m)} units={kindUnits} today={today} />
+        <ReceiveForm material={{ ...toOption(m), vat_rate: vatRate }} units={kindUnits} suppliers={suppliers} today={today} />
       )}
     </Drawer>
   );

@@ -94,6 +94,10 @@ export interface MaterialMovement {
   movement_type: "purchase" | "purchase_reversal" | "production_consume" | "production_return" | "write_off";
   /** purchase_reversal: kapattığı alış hareketi */
   reverses_movement_id?: number | null;
+  corrected_at?: string | null;
+  supplier_id?: string | null;
+  vat_rate?: number | null;
+  vat_amount?: number | null;
   movement_date: string;
   qty: number;
   value_try: number;
@@ -447,6 +451,31 @@ export interface SalesPeriodRow {
   cogs_try: number;
   gross_profit_try: number;
 }
+
+export interface Supplier {
+  id: string;
+  name: string;
+  tax_number: string | null;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  note: string | null;
+  is_active: boolean;
+}
+
+export interface SupplierListRow extends Supplier {
+  purchase_count: number;
+  material_count: number;
+  total_try: number;
+  total_usd: number;
+  last_purchase_date: string | null;
+  /** KDV toplamı (TL, alış günü kuruyla) */
+  vat_try: number;
+}
+
+/** Alış formlarındaki tedarikçi seçimi */
+export type SupplierOption = Pick<Supplier, "id" | "name" | "is_active">;
 
 export interface Customer {
   id: string;

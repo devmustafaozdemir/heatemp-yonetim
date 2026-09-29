@@ -3,6 +3,7 @@ import {
   Building2,
   Calculator,
   Factory,
+  Handshake,
   LayoutDashboard,
   Package,
   Receipt,
@@ -42,6 +43,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Ürünler ve BOM", icon: Package, href: "/urunler" },
       { label: "Hammadde", icon: Boxes, href: "/hammadde" },
+      { label: "Tedarikçiler", icon: Handshake, href: "/tedarikciler" },
       { label: "Üretim simülasyonu", icon: Calculator, href: "/simulasyon" },
       { label: "Üretim partileri", icon: Factory, href: "/uretim" },
     ],

@@ -29,6 +29,8 @@ export interface MaterialOption {
   value_try: number;
   avg_cost_try_display: number | null;
   avg_cost_usd_display: number | null;
+  /** Önerilen KDV oranı (%); yüklenmediyse 20 varsayılır */
+  vat_rate?: number;
 }
 
 export function toOption(m: MaterialView): MaterialOption {

@@ -610,50 +610,164 @@ describe("Tutarlılık", () => {
   });
 });
 
-describe("Hammadde alışı düzeltme / iptal", () => {
-  it("alışı ters kayıtla kapatıp düzeltilmiş alışı açar; defter ve ortalama maliyet tutarlı kalır", async () => {
+describe("Tedarikçiler", () => {
+  it("alışta seçilen tedarikçi listede toplanır; ad değişince hareketlerdeki ad güncellenir", async () => {
+    const f = await setupProduct(admin);
+    const tag = Math.random().toString(36).slice(2, 8);
+    const [sup] = await query(f.admin, "insert into public.suppliers (name) values ($1) returning id", [`Tel ${tag}`]);
+    const buy = await rpc<number>(f.admin, "receive_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 10,
+      p_unit: "kg",
+      p_unit_price: 5,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+      p_supplier_id: sup.id,
+    });
+    const [row] = await query(f.admin, "select * from public.v_supplier_list where id = $1", [sup.id]);
+    expect(Number(row.purchase_count)).toBe(1);
+    expect(Number(row.total_usd)).toBeCloseTo(50, 2);
+    await query(f.admin, "update public.suppliers set name = $2 where id = $1", [sup.id, `Tel Sanayi ${tag}`]);
+    const [m] = await sql("select supplier, supplier_id from public.material_movements where id = $1", [buy]);
+    expect(m.supplier).toBe(`Tel Sanayi ${tag}`);
+    expect(m.supplier_id).toBe(sup.id);
+    await expectError(
+      query(f.admin, "insert into public.suppliers (name) values ($1)", [`tel sanayi ${tag}`.toUpperCase()]),
+      /suppliers_name_unique/,
+    );
+  });
+
+  it("üretimde kullanılmış alışa da yalnız tedarikçi seçilebilir; maliyet değişmez", async () => {
+    const f = await setupProduct(admin);
+    const tel = await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
+    await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
+    await produce(f, 10);
+    const tag = Math.random().toString(36).slice(2, 8);
+    const [sup] = await query(f.admin, "insert into public.suppliers (name) values ($1) returning id", [`Tel ${tag}`]);
+    const [before] = await sql("select * from public.material_movements where id = $1", [tel]);
+    await rpc(f.admin, "set_purchase_supplier", { p_movement_id: tel, p_supplier_id: sup.id });
+    const [after] = await sql("select * from public.material_movements where id = $1", [tel]);
+    expect(after.supplier_id).toBe(sup.id);
+    expect(after.supplier).toBe(`Tel ${tag}`);
+    expect(after.value_try).toBe(before.value_try);
+    expect(after.corrected_at).toBeNull();
+    await rpc(f.admin, "set_purchase_supplier", { p_movement_id: tel, p_supplier_id: null });
+    const [cleared] = await sql("select supplier_id, supplier from public.material_movements where id = $1", [tel]);
+    expect(cleared.supplier_id).toBeNull();
+  });
+
+  it("görüntüleyici tedarikçi ekleyemez", async () => {
+    const viewer = await createUser("viewer");
+    await expectError(query(viewer, "insert into public.suppliers (name) values ('X')"), /row-level security/);
+  });
+});
+
+describe("Alış KDV'si ve stok seyri", () => {
+  it("KDV oranı malzemeden gelir, tutar hesaplanır veya elle girilir; KDV maliyete girmez", async () => {
+    const f = await setupProduct(admin);
+    const a = await rpc<number>(f.admin, "receive_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 10,
+      p_unit: "kg",
+      p_unit_price: 5,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+    });
+    const b = await rpc<number>(f.admin, "receive_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 10,
+      p_unit: "kg",
+      p_unit_price: 5,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+      p_vat_rate: 10,
+      p_vat_amount: 4.99,
+    });
+    const rows = await sql("select id, vat_rate, vat_amount, value_usd from public.material_movements where id = any($1) order by id", [[a, b]]);
+    expect(Number(rows[0].vat_rate)).toBe(20);
+    expect(Number(rows[0].vat_amount)).toBeCloseTo(10, 4);
+    expect(Number(rows[1].vat_rate)).toBe(10);
+    expect(Number(rows[1].vat_amount)).toBeCloseTo(4.99, 4);
+    expect(Number(rows[0].value_usd)).toBeCloseTo(50, 4);
+
+    const flows = await query(f.admin, "select * from public.material_flows($1, 'gun', null)", [f.materials[0].id]);
+    expect(flows).toHaveLength(1);
+    expect(Number(flows[0].in_qty)).toBe(20000);
+    const years = await query(f.admin, "select * from public.material_flows($1, 'yil', null)", [f.materials[0].id]);
+    expect(String(years[0].bucket).slice(5, 10) === "01-01" || new Date(years[0].bucket).getMonth() === 0).toBe(true);
+  });
+});
+
+describe("Hammadde alışı düzenleme / hareket silme", () => {
+  it("alışı yerinde günceller; ters kayıt eklenmez, sonraki bakiyeler ve defter tutarlı kalır", async () => {
     const f = await setupProduct(admin);
     const wrong = await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
-    const newId = await rpc<number>(f.admin, "correct_material_purchase", {
+    const later = await receive(f.admin, f.materials[0].id, 5, "kg", 10, "USD", f.fxId);
+    const id = await rpc<number>(f.admin, "update_material_purchase", {
       p_movement_id: wrong,
-      p_reason: "Fiyat yanlış girildi",
       p_qty: 20,
       p_unit: "kg",
       p_unit_price: 12,
       p_currency: "USD",
       p_fx_rate_id: f.fxId,
+      p_received_on: null,
     });
-    expect(Number(newId)).toBeGreaterThan(Number(wrong));
+    expect(Number(id)).toBe(Number(wrong));
     const [tel] = await sql("select * from public.v_materials where id = $1", [f.materials[0].id]);
-    expect(Number(tel.qty)).toBe(20000);
-    expect(Number(tel.value_usd)).toBeCloseTo(240, 4);
-    const rev = await sql("select * from public.material_movements where reverses_movement_id = $1", [wrong]);
-    expect(rev).toHaveLength(1);
-    expect(Number(rev[0].qty)).toBe(-30000);
-    // aynı alış ikinci kez düzeltilemez
-    await expectError(
-      rpc(f.admin, "correct_material_purchase", { p_movement_id: wrong, p_reason: "tekrar" }),
-      /daha önce düzeltilmiş/,
+    expect(Number(tel.qty)).toBe(25000);
+    expect(Number(tel.value_usd)).toBeCloseTo(290, 4);
+    const rows = await sql(
+      "select id, qty, balance_qty_after, corrected_at from public.material_movements where material_id = $1 order by id",
+      [f.materials[0].id],
     );
+    expect(rows).toHaveLength(2);
+    expect(Number(rows[0].qty)).toBe(20000);
+    expect(rows[0].corrected_at).not.toBeNull();
+    expect(Number(rows[1].balance_qty_after)).toBe(25000);
+    expect(await query(f.admin, "select * from public.ledger_inconsistencies()")).toEqual([]);
+
+    await rpc(f.admin, "delete_material_movement", { p_movement_id: later });
+    const [after] = await sql("select * from public.v_materials where id = $1", [f.materials[0].id]);
+    expect(Number(after.qty)).toBe(20000);
+
+    // fire kaydı da silinebilir; stok ve değer geri gelir
+    const wo = await rpc<number>(f.admin, "write_off_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 2,
+      p_unit: "kg",
+      p_reason: "sayım",
+    });
+    await rpc(f.admin, "delete_material_movement", { p_movement_id: wo });
+    const [back] = await sql("select * from public.v_materials where id = $1", [f.materials[0].id]);
+    expect(Number(back.qty)).toBe(20000);
+    expect(Number(back.value_usd)).toBeCloseTo(240, 4);
     expect(await query(f.admin, "select * from public.ledger_inconsistencies()")).toEqual([]);
   });
 
-  it("alıştan sonra üretimde kullanılan malzemenin alışı düzeltilemez; iptal yalnız gerekçeyle", async () => {
+  it("hareketten sonra üretimde kullanılan malzemenin alışı değiştirilemez ve silinemez", async () => {
     const f = await setupProduct(admin);
     const tel = await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
     await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
-    await expectError(rpc(f.admin, "correct_material_purchase", { p_movement_id: tel, p_reason: " " }), /gerekçesi/);
     await produce(f, 10);
+    await expectError(rpc(f.admin, "delete_material_movement", { p_movement_id: tel }), /üretimde kullanıldı veya fire yazıldı/);
     await expectError(
-      rpc(f.admin, "correct_material_purchase", { p_movement_id: tel, p_reason: "iptal" }),
+      rpc(f.admin, "update_material_purchase", {
+        p_movement_id: tel,
+        p_qty: 40,
+        p_unit: "kg",
+        p_unit_price: 10,
+        p_currency: "USD",
+        p_fx_rate_id: f.fxId,
+        p_received_on: null,
+      }),
       /üretimde kullanıldı veya fire yazıldı/,
     );
   });
 
-  it("görüntüleyici alış düzeltemez", async () => {
+  it("görüntüleyici hareket silemez", async () => {
     const f = await setupProduct(admin);
     const viewer = await createUser("viewer");
     const tel = await receive(f.admin, f.materials[0].id, 5, "kg", 10, "USD", f.fxId);
-    await expectError(rpc(viewer, "correct_material_purchase", { p_movement_id: tel, p_reason: "x" }), /yönetici yetkisi/);
+    await expectError(rpc(viewer, "delete_material_movement", { p_movement_id: tel }), /yönetici yetkisi/);
   });
 });

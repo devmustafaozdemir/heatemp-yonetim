@@ -24,6 +24,12 @@ rapor, sayılar ve SQL `import/excel-aktarim/` altındadır (git dışında, ger
 - Kalıba uymayan kodlar (Redüksiyonlar) kendi kodlarıyla tek varyantlı ürün olur.
 - Sonuç: 19 ürün, 51 varyant (49 katalog kodu + katalogda olmayan 2 Redüksiyon).
 
+> **Katalog düzeltmesi (sonradan):** Ürünler, Heatemp Ürün Grubu tablosundaki 6 aileye toplandı:
+> `HT-KABLO` (K ve D, 18), `HT-KANAL` (Kanal/Daldırma/Dış Ortam/Yüzey, 18), `HT-MAHAL` (6), `HT-SKS` (2),
+> `HT-FCM` (2), `HT-KV` (3). Varyant kodları değişmedi. Redüksiyonlar hammadde/komponent oldu
+> (`KMP-RED-…`). Katalog aktarımından sonra [`scripts/katalog-duzeltme.sql`](../scripts/katalog-duzeltme.sql)
+> çalıştırılır; düzeltme sonrası eski `katalog-aktarim.sql` yeniden çalıştırılmamalıdır (eski ürünleri geri açar).
+
 ## Aktarım adımları
 
 1. **Katalog** (`katalog-aktarim.sql`): ürün, varyant, kesin eşleşen satış fiyatları (HT-MT-M 8, HT-MT-P 10,

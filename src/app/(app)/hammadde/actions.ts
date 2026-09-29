@@ -14,6 +14,7 @@ export async function createMaterial(formData: FormData) {
       unit_kind: form.oneOf("unit_kind", "Birim türü", UNIT_KINDS),
       display_unit: form.text("display_unit", "Gösterim birimi", { required: true }),
       notes: form.text("notes", "Not", { max: 1000 }),
+      vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }) ?? 20,
     };
     form.assertValid();
     const m = unwrap(await ctx.supabase.from("raw_materials").insert(values).select("id").single());
@@ -30,6 +31,7 @@ export async function updateMaterial(formData: FormData) {
       kind: form.oneOf("kind", "Tür", ["raw", "component"] as const, "raw"),
       display_unit: form.text("display_unit", "Gösterim birimi", { required: true }),
       notes: form.text("notes", "Not", { max: 1000 }),
+      vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }) ?? 20,
       is_active: form.bool("is_active"),
     };
     form.assertValid();
@@ -48,7 +50,9 @@ export async function receiveMaterial(formData: FormData) {
       p_currency: form.oneOf("currency", "Para birimi", CURRENCIES),
       p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
       p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
-      p_supplier: form.text("supplier", "Tedarikçi", { max: 160 }),
+      p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
+      p_vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }),
+      p_vat_amount: form.decimal("vat_amount", "KDV tutarı", { min: 0 }),
       p_note: form.text("note", "Not", { max: 500 }),
       p_request_id: form.requestId(),
     };
@@ -61,37 +65,51 @@ export async function receiveMaterial(formData: FormData) {
   });
 }
 
-/** Alışı düzelt (ters kayıt + düzeltilmiş yeni alış) veya tamamen iptal et (yalnız ters kayıt). */
+/** Alışı yerinde düzenler (hareket geçmişine çıkış/giriş satırı eklenmez). */
 export async function correctPurchase(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {
-    const cancelOnly = formData.get("cancel_only") === "on";
-    const reason = form.text("reason", "Düzeltme gerekçesi", { required: true, max: 300 });
-    const movementId = form.bigintId("movement_id", "Hareket");
-    const args = cancelOnly
-      ? { p_movement_id: movementId, p_reason: reason, p_request_id: form.requestId() }
-      : {
-          p_movement_id: movementId,
-          p_reason: reason,
-          p_qty: form.decimal("qty", "Miktar", { required: true, positive: true }),
-          p_unit: form.text("unit", "Birim", { required: true }),
-          p_unit_price: form.decimal("unit_price", "Birim fiyat", { required: true, positive: true }),
-          p_currency: form.oneOf("currency", "Para birimi", CURRENCIES),
-          p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
-          p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
-          p_supplier: form.text("supplier", "Tedarikçi", { max: 160 }),
-          p_note: form.text("note", "Not", { max: 500 }),
-          p_request_id: form.requestId(),
-        };
-    if (!cancelOnly && !("p_fx_rate_id" in args && args.p_fx_rate_id)) {
+    const args = {
+      p_movement_id: form.bigintId("movement_id", "Hareket"),
+      p_qty: form.decimal("qty", "Miktar", { required: true, positive: true }),
+      p_unit: form.text("unit", "Birim", { required: true }),
+      p_unit_price: form.decimal("unit_price", "Birim fiyat", { required: true, positive: true }),
+      p_currency: form.oneOf("currency", "Para birimi", CURRENCIES),
+      p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
+      p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
+      p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
+      p_vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }),
+      p_vat_amount: form.decimal("vat_amount", "KDV tutarı", { min: 0 }),
+      p_note: form.text("note", "Not", { max: 500 }),
+    };
+    if (!args.p_fx_rate_id) {
       form.errors.fx_rate_id = "Geçerli bir işlem kuru yok. Kuru güncelleyin veya manuel kur girin.";
     }
     form.assertValid();
-    unwrap(await ctx.supabase.rpc("correct_material_purchase", args));
-    return {
-      message: cancelOnly
-        ? "Alış iptal edildi; stok ve ortalama maliyet geri alındı."
-        : "Alış düzeltildi; eski kayıt ters kayıtla kapatıldı, doğru alış eklendi.",
+    unwrap(await ctx.supabase.rpc("update_material_purchase", args));
+    return { message: "Alış güncellendi; stok ve ortalama maliyet yeniden hesaplandı." };
+  });
+}
+
+/** Alışın yalnız tedarikçisini değiştirir (maliyet ve stok aynen kalır). */
+export async function setPurchaseSupplier(formData: FormData) {
+  return adminAction(formData, async (ctx, form) => {
+    const args = {
+      p_movement_id: form.bigintId("movement_id", "Hareket"),
+      p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
     };
+    form.assertValid();
+    unwrap(await ctx.supabase.rpc("set_purchase_supplier", args));
+    return { message: args.p_supplier_id ? "Tedarikçi kaydedildi." : "Tedarikçi kaldırıldı." };
+  });
+}
+
+/** Alış veya fire hareketini siler. */
+export async function deleteMovement(formData: FormData) {
+  return adminAction(formData, async (ctx, form) => {
+    const id = form.bigintId("movement_id", "Hareket");
+    form.assertValid();
+    unwrap(await ctx.supabase.rpc("delete_material_movement", { p_movement_id: id }));
+    return { message: "Hareket silindi; stok ve ortalama maliyet yeniden hesaplandı." };
   });
 }
 
