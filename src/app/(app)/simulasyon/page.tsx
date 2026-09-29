@@ -19,7 +19,7 @@ import { fxSourceLabel } from "@/components/FxBadge";
 import { Alert, Badge, ButtonLink, Card, EmptyState, ErrorState, PageHeader, TableWrap, cx } from "@/components/ui";
 import { requireMember } from "@/lib/auth";
 import { suggestFx, type FxSuggestion } from "@/lib/fx/service";
-import { fmtDate, fmtInt, fmtMinutes, fmtMoney, fmtNum, fmtQty, fmtRate, fmtUnitMoney, todayTr } from "@/lib/format";
+import { fmtDate, fmtInt, fmtMinutes, fmtMinutes100, fmtMoney, fmtNum, fmtQty, fmtRate, fmtUnitMoney, todayTr } from "@/lib/format";
 import { first, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { load } from "@/lib/query";
@@ -352,11 +352,11 @@ function SummaryCard({
       <SummarySection icon={Clock} title="Süre">
         {hasMinutes ? (
           <>
-            <Row label="Birim üretim süresi" value={fmtMinutes(sim.unit_production_minutes)} />
+            <Row label="Üretim süresi (100 adet)" value={fmtMinutes100(sim.unit_production_minutes)} />
             <Row
               label="Tahmini üretim süresi"
               value={fmtMinutes(sim.estimated_minutes)}
-              hint={`${fmtInt(sim.quantity)} × ${fmtMinutes(sim.unit_production_minutes)}`}
+              hint={`${fmtInt(sim.quantity)} adet · ${fmtMinutes100(sim.unit_production_minutes)}`}
               strong
             />
           </>

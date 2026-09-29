@@ -206,7 +206,7 @@ export function QuoteItemForm({
             ) : v ? (
               <span>Bu varyantın tanımlı liste fiyatı yok.</span>
             ) : (
-              <span>Varyant seçince liste fiyatı, Mekonsis stoğu ve FIFO maliyet önizlemesi görünür.</span>
+              <span>Varyant seçince liste fiyatı, Mekonsis stoğu ve maliyet önizlemesi görünür.</span>
             )}
           </div>
           <div className="mt-4">
@@ -278,7 +278,7 @@ function PreviewPanel({ pv, currency, fxRate }: { pv: Preview | null; currency: 
             </dd>
           </div>
           <div className={row}>
-            <dt className="text-ink-muted">Tahmini maliyet (FIFO)</dt>
+            <dt className="text-ink-muted">Tahmini maliyet</dt>
             <dd className="text-right tabular-nums">
               {pv.costTry === null ? "—" : pv.costUnknown && pv.costTry === 0 ? "Bilinmiyor" : fmtMoney(pv.costTry, "TRY")}
               {pv.costUnknown ? <Warn>stokta olmayan {fmtInt(pv.shortage)} adedin maliyeti bilinmiyor</Warn> : null}

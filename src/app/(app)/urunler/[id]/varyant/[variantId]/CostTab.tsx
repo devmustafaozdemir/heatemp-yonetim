@@ -1,7 +1,7 @@
 import { Clock, Factory, FlaskConical, Tag } from "lucide-react";
 import { Card, ErrorState } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
-import { fmtDate, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
+import { fmtDate, fmtMinutes100, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { parseListParams, type SearchParams } from "@/lib/list-params";
 import { BATCH_SORTABLE, BatchHistoryCard, NoProductionCard, OpeningBatchesCard, loadCostPoints } from "../../../_components/Batches";
 import { StatTile, priceMinusEstimate } from "../../../_components/bits";
@@ -53,11 +53,11 @@ export async function VariantCostTab({ ctx, data, sp }: { ctx: AuthContext; data
           }
         />
         <StatTile
-          label="Birim üretim süresi"
-          value={fmtMinutes(e.unit_production_minutes)}
+          label="Üretim süresi (100 adet)"
+          value={fmtMinutes100(e.unit_production_minutes)}
           icon={Clock}
           tone="amber"
-          description={`${e.minutes_overridden ? "Varyanta özel" : "Ürün varsayılanı"}${Number(e.unit_production_minutes) > 0 ? ` · 100 adet ≈ ${fmtMinutes(Number(e.unit_production_minutes) * 100)}` : ""}`}
+          description={`${e.minutes_overridden ? "Varyanta özel" : "Ürün varsayılanı"}`}
         />
       </div>
 

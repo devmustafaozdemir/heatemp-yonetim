@@ -35,7 +35,7 @@ const neg = "text-chart-red";
 
 /**
  * Teklif kalemleri: adet, liste (normal) fiyatı, özel fiyat, indirim (tutar ve %), tutar,
- * Mekonsis stoğu, tahmini (FIFO önizleme) veya gerçekleşen maliyet, brüt kâr ve marj birlikte.
+ * Mekonsis stoğu, tahmini (önizleme) veya gerçekleşen maliyet, brüt kâr ve marj birlikte.
  */
 export function QuoteLinesTable({
   quoteId,
@@ -91,8 +91,8 @@ export function QuoteLinesTable({
                   stoğu
                 </th>
               ) : null}
-              <th colSpan={3} className="border-l border-line text-center!" title={actual ? "Satışta FIFO ile düşülen partilerden" : "Mekonsis rafındaki partilerden FIFO sırasıyla tahmin; stok düşürmez"}>
-                {word} ({actual ? "FIFO" : "FIFO önizleme"}, ₺)
+              <th colSpan={3} className="border-l border-line text-center!" title={actual ? "Satışta düşülen partilerden" : "Mekonsis rafındaki partilerden en eskiden başlayarak tahmin; stok düşürmez"}>
+                {word} ({actual ? "gerçekleşen" : "önizleme"}, ₺)
               </th>
               {editable ? <th rowSpan={2} aria-label="İşlemler" /> : null}
             </tr>

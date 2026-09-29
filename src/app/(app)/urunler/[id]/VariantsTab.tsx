@@ -3,7 +3,7 @@ import Link from "next/link";
 import { StockStatusBadge } from "@/components/StockStatus";
 import { Badge, Card, EmptyState, ErrorState, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
-import { fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
+import { fmtInt, fmtMinutes100, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { load } from "@/lib/query";
 import type { Product, VariantOverview, VariantView } from "@/lib/types";
 import { ShelfSplit, SourceTag, StockProgress } from "../_components/bits";
@@ -87,7 +87,7 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                         <SourceTag overridden={v.price_overridden} />
                       </td>
                       <td className="num">
-                        <div>{fmtMinutes(v.unit_production_minutes)}</div>
+                        <div>{fmtMinutes100(v.unit_production_minutes)}</div>
                         <SourceTag overridden={v.minutes_overridden} />
                       </td>
                       <td className="num">
@@ -221,7 +221,7 @@ export async function VariantsTab({ ctx, product, variants }: { ctx: AuthContext
                     </div>
                     <div className="min-w-0">
                       <dt className="text-xs text-ink-muted">Birim süre</dt>
-                      <dd className="tabular-nums">{fmtMinutes(v.unit_production_minutes)}</dd>
+                      <dd className="tabular-nums">{fmtMinutes100(v.unit_production_minutes)}</dd>
                       <dd>
                         <SourceTag overridden={v.minutes_overridden} />
                       </dd>

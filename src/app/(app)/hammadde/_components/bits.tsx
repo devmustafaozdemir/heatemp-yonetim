@@ -82,3 +82,7 @@ export function ListValue({ label, value, hint }: { label: ReactNode; value: Rea
     </div>
   );
 }
+
+/** Hammadde silme onayı açıklaması (liste ve detayda aynı). */
+export const DELETE_MATERIAL_TEXT =
+  "Malzeme; tüm alış, fire ve düzeltme hareketleri, stok bakiyesi ve reçetelerdeki satırlarıyla birlikte kalıcı olarak silinir. Üretim partisinde kullanıldıysa silinemez; bunun yerine pasif yapın. Bu işlem geri alınamaz.";

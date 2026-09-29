@@ -94,6 +94,18 @@ export function fmtMonth(value: string): string {
 }
 
 /** Dakika → "2 sa 15 dk" / "3 gün 4 sa" */
+/** Adet başı üretim süresini 100 adetlik süre olarak gösterir (ör. "45 dk / 100 adet"). */
+export function fmtMinutes100(perUnit: Num): string {
+  const n = toNumber(perUnit);
+  return n === null ? "—" : `${fmtMinutes(n * 100)} / 100 adet`;
+}
+
+/** Form alanı için 100 adetlik süre (dk); adet başı değer × 100. */
+export function minutesPer100(perUnit: Num): string {
+  const n = toNumber(perUnit);
+  return n === null ? "" : String(Math.round(n * 100 * 100) / 100);
+}
+
 export function fmtMinutes(value: Num): string {
   const n = toNumber(value);
   if (n === null) return "—";

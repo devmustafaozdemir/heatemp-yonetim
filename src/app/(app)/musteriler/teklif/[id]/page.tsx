@@ -223,7 +223,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
         )}
         {actualError ? (
           <Alert tone="error" title="Gerçekleşen satış değerleri yüklenemedi">
-            {actualError} Aşağıdaki maliyet ve kâr, güncel FIFO önizlemesine göre tahmini değerlerdir.
+            {actualError} Aşağıdaki maliyet ve kâr, güncel raf önizlemesine göre tahmini değerlerdir.
           </Alert>
         ) : null}
       </div>
@@ -260,8 +260,8 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
             figuresFailed && hasLines
               ? failedNote
               : actual
-                ? "Satışta düşülen partilerin FIFO maliyeti"
-                : "FIFO önizleme · Mekonsis rafındaki partilerden; stok düşürmez"
+                ? "Satışta düşülen partilerin maliyeti"
+                : "Önizleme · Mekonsis rafındaki partilerden; stok düşürmez"
           }
         />
         <StatCard
@@ -286,8 +286,8 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
         icon={ListPlus}
         description={
           actual
-            ? "Maliyet ve kâr, satışta FIFO ile düşülen partilerden gerçekleşen değerlerdir."
-            : "Maliyet, Mekonsis rafındaki partilerden FIFO sırasıyla tahmin edilir; stok yetmeyen kısım için son tamamlanan partinin birim maliyeti kullanılır."
+            ? "Maliyet ve kâr, satışta düşülen partilerden gerçekleşen değerlerdir."
+            : "Maliyet, Mekonsis rafındaki partilerden en eskiden başlayarak tahmin edilir; stok yetmeyen kısım için son tamamlanan partinin birim maliyeti kullanılır."
         }
         padded={false}
         className="mb-4"
@@ -358,7 +358,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
                     ["Toplam indirim", discountTotal !== null ? `${fmtMoney(discountTotal, quote.currency)} · ${fmtPct(discountPct)}` : "—"],
                     ["Teklif tutarı", <strong key="t">{fmtMoney(quote.total_amount, quote.currency)}</strong>],
                     [`${word} ciro (₺)`, hasLines ? fmtMoney(revenueTry, "TRY") : "—"],
-                    [actual ? "Maliyet (FIFO, ₺)" : "Tahmini maliyet (FIFO önizleme, ₺)", costTry !== null && hasLines ? fmtMoney(costTry, "TRY") : "—"],
+                    [actual ? "Maliyet (₺)" : "Tahmini maliyet (₺)", costTry !== null && hasLines ? fmtMoney(costTry, "TRY") : "—"],
                     [
                       `${word} brüt kâr (₺)`,
                       <strong key="k" className={profitTry !== null && profitTry < 0 ? "text-chart-red" : undefined}>

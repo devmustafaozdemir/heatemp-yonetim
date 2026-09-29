@@ -4,7 +4,7 @@ import { ActionForm, FormField, SubmitButton } from "@/components/forms";
 import { StockStatusBadge } from "@/components/StockStatus";
 import { Badge, Card, DefinitionList, EmptyState, ErrorState } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
-import { fmtDate, fmtInt, fmtMinutes, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtInt, fmtMinutes100, fmtMoney } from "@/lib/format";
 import { load } from "@/lib/query";
 import type { Product, VariantOverview, VariantView } from "@/lib/types";
 import { deleteProduct, removeProductImage, updateProduct, uploadProductImage } from "../actions";
@@ -52,7 +52,7 @@ export async function GeneralTab({
                 ["Ürün kodu", <span key="c" className="code">{product.code}</span>],
                 ["Ürün adı", product.name],
                 ["Varsayılan satış fiyatı", fmtMoney(product.default_sale_price, product.default_currency)],
-                ["Birim üretim süresi", fmtMinutes(product.unit_production_minutes)],
+                ["Üretim süresi (100 adet)", fmtMinutes100(product.unit_production_minutes)],
                 ["Kritik stok eşiği", fmtInt(product.critical_stock)],
                 ["Minimum stok eşiği", fmtInt(product.min_stock)],
                 ["Hedef stok", fmtInt(product.target_stock)],

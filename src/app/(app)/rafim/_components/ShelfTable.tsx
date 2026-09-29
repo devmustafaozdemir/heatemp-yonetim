@@ -316,8 +316,8 @@ export function ShelfTable({
       )}
       <p className="border-t border-line px-4 py-2.5 text-xs text-ink-muted">
         {heatemp
-          ? "Partiler rafa giriş tarihine göre (FIFO) sıralıdır; teslimat en eski partiden başlar. USD değerleri parti kurlarıyla, bilgi amaçlıdır."
-          : "Yalnız rafta kalan katmanlar listelenir. Satışlar en eski teslimat katmanından başlayarak (FIFO) düşer; tamamen satılan teslimatlar Teslimatlar ekranındadır."}
+          ? "Partiler rafa giriş tarihine göre sıralıdır; teslimat en eski partiden başlar. USD değerleri parti kurlarıyla, bilgi amaçlıdır."
+          : "Yalnız rafta kalan katmanlar listelenir. Satışlar en eski teslimat katmanından başlayarak düşer; tamamen satılan teslimatlar Teslimatlar ekranındadır."}
       </p>
     </div>
   );

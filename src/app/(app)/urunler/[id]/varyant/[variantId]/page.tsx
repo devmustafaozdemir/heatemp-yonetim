@@ -6,12 +6,14 @@ import { Badge, ButtonLink, Card, PageHeader } from "@/components/ui";
 import { LinkTabs } from "@/components/ui/list";
 import { getAuthContext, requireMember } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
-import { fmtDate, fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
+import { fmtDate, fmtInt, fmtMinutes100, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { first, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { Product, Simulation, VariantOverview, VariantView, ProductVariant } from "@/lib/types";
+import { DeleteButton } from "@/components/DeleteButton";
 import { KpiStrip, ProductThumb, ShelfSplit } from "../../../_components/bits";
+import { deleteVariant } from "../../../actions";
 import { TabLabel } from "../../../_components/TabLabel";
 import { VariantBomTab } from "./BomTab";
 import { VariantCostTab } from "./CostTab";
@@ -108,12 +110,25 @@ export default async function VariantPage({
         actions={
           // Reçetesiz varyantta simülasyon hesaplanamaz; düğme yalnız reçete varken (veya
           // reçete bilgisi alınamadığında) gösterilir.
-          sim?.has_bom !== false ? (
-            <ButtonLink href={`/simulasyon?varyant=${variantId}&adet=1`} variant="secondary">
-              <Calculator aria-hidden />
-              Üretim simülasyonu
-            </ButtonLink>
-          ) : null
+          <>
+            {sim?.has_bom !== false ? (
+              <ButtonLink href={`/simulasyon?varyant=${variantId}&adet=1`} variant="secondary">
+                <Calculator aria-hidden />
+                Üretim simülasyonu
+              </ButtonLink>
+            ) : null}
+            {isAdmin ? (
+              <DeleteButton
+                action={deleteVariant}
+                fields={{ id: variant.id, product_id: product.id }}
+                title={`${variant.name} varyantı silinsin mi?`}
+                variant="secondary"
+              >
+                Varyant ve reçetesi kalıcı olarak silinir. Üretim, stok, teslimat, satış veya teklif kaydı olan varyant silinemez; pasif yapın.
+                Ürünün son varyantı silinemez; bunun yerine ürünü silin.
+              </DeleteButton>
+            ) : null}
+          </>
         }
       />
 
@@ -156,8 +171,8 @@ export default async function VariantPage({
                     : "Tamamlanmış üretim yok",
               },
               {
-                label: "Birim üretim süresi",
-                value: fmtMinutes(effective.unit_production_minutes),
+                label: "Üretim süresi (100 adet)",
+                value: fmtMinutes100(effective.unit_production_minutes),
                 sub: effective.minutes_overridden ? "Varyanta özel" : "Ürün varsayılanı",
               },
             ]}

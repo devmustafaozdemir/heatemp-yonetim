@@ -7,6 +7,11 @@ const CURRENCIES = ["USD", "TRY"] as const;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
+/** Formda 100 adetlik süre girilir; veritabanında adet başı süre saklanır (2 ondalık). */
+function per100ToUnit(v: number | null): number | null {
+  return v === null ? null : Math.round(v) / 100;
+}
+
 function readThresholds(form: FormReader, required: boolean) {
   const critical = form.int("critical_stock", "Kritik stok", { required, min: 0 });
   const min = form.int("min_stock", "Minimum stok", { required, min: 0 });
@@ -27,7 +32,7 @@ function readProduct(form: FormReader) {
     description: form.text("description", "Açıklama", { max: 2000 }),
     default_sale_price: form.decimal("default_sale_price", "Varsayılan satış fiyatı", { min: 0 }),
     default_currency: form.oneOf("default_currency", "Para birimi", CURRENCIES, "USD"),
-    unit_production_minutes: form.decimal("unit_production_minutes", "Birim üretim süresi", { required: true, min: 0 }),
+    unit_production_minutes: per100ToUnit(form.decimal("unit_production_minutes", "Üretim süresi (100 adet)", { required: true, min: 0 })),
   };
   const t = readThresholds(form, true);
   return {
@@ -112,7 +117,7 @@ function readVariant(form: FormReader) {
     name: form.text("name", "Varyant adı / detay", { required: true, max: 160 }),
     sale_price: price,
     currency,
-    unit_production_minutes: form.decimal("unit_production_minutes", "Birim üretim süresi", { min: 0 }),
+    unit_production_minutes: per100ToUnit(form.decimal("unit_production_minutes", "Üretim süresi (100 adet)", { min: 0 })),
     critical_stock: t.critical,
     min_stock: t.min,
     target_stock: t.target,

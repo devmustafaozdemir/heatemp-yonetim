@@ -196,7 +196,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
           value={fmtMoney(customer.gross_profit_try, "TRY")}
           icon={Coins}
           tone="teal"
-          description={customer.sale_count ? `Tüm zamanlar · marj ${fmtPct(customer.margin_pct)} · FIFO parti maliyetiyle` : "Henüz gerçekleşmiş satış yok"}
+          description={customer.sale_count ? `Tüm zamanlar · marj ${fmtPct(customer.margin_pct)} ` : "Henüz gerçekleşmiş satış yok"}
         />
         <StatCard
           label="Teklifler"
@@ -410,7 +410,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
                         <th className="num" title="Teklifin kendi para biriminde tutarı">
                           Tutar
                         </th>
-                        <th className="num" title="Açık teklifte FIFO önizlemesiyle tahmini; dönüşen teklifte gerçekleşen satışın brüt kârı">
+                        <th className="num" title="Açık teklifte raf önizlemesiyle tahmini; dönüşen teklifte gerçekleşen satışın brüt kârı">
                           Brüt kâr (₺)
                         </th>
                         <th>Durum</th>
@@ -546,7 +546,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
                           Tutar
                         </th>
                         <SortTh label="Ciro (₺)" column="revenue_try" align="right" title="Satış günündeki kurla TL" {...sortProps} />
-                        <SortTh label="Brüt kâr (₺)" column="gross_profit_try" align="right" title="FIFO parti maliyetiyle gerçekleşmiş brüt kâr" {...sortProps} />
+                        <SortTh label="Brüt kâr (₺)" column="gross_profit_try" align="right" title="Gerçekleşmiş brüt kâr" {...sortProps} />
                         <th className="num">Marj</th>
                         <th>Durum</th>
                       </tr>

@@ -238,7 +238,7 @@ export default async function MekonsisPage() {
                       value: `${fmtInt(moveTotals.in)} adet`,
                       hint: moveTotals.rev > 0 ? `${fmtInt(moveTotals.rev)} adet geri alındı` : "Satış değildir",
                     },
-                    { label: "Satış çıkışı", value: `${fmtInt(moveTotals.out)} adet`, hint: "FIFO ile düşülen" },
+                    { label: "Satış çıkışı", value: `${fmtInt(moveTotals.out)} adet`, hint: "Satışla düşülen" },
                     { label: "Satış iptali (rafa dönüş)", value: `${fmtInt(moveTotals.ret)} adet` },
                   ]}
                 />

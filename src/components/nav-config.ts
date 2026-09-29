@@ -73,7 +73,17 @@ export const NAV: NavGroup[] = [
   },
   {
     title: "Finans",
-    items: [{ label: "Kasa", icon: Wallet, href: "/kasa" }],
+    items: [
+      {
+        label: "Kasa",
+        icon: Wallet,
+        children: [
+          { href: "/kasa", label: "Genel kasa" },
+          { href: "/kasa/heatemp", label: "Heatemp kasası (%66,5)" },
+          { href: "/kasa/mekonsis", label: "Mekonsis kasası (%33,5)" },
+        ],
+      },
+    ],
   },
   {
     title: "Sistem",

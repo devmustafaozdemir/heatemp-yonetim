@@ -88,9 +88,9 @@ export function DeliverForm({ options, today, initialVariant }: { options: Deliv
                 ))}
               </select>
             </FormField>
-            <FormField name="batch_id" label="Parti" hint="Boş bırakılırsa en eski partiden başlanır (FIFO).">
+            <FormField name="batch_id" label="Parti" hint="Boş bırakılırsa en eski partiden başlanır.">
               <select className="input" name="batch_id" value={batchId} onChange={(e) => setBatchId(e.target.value)}>
-                <option value="">Otomatik (FIFO)</option>
+                <option value="">Otomatik (en eski önce)</option>
                 {option?.batches.map((b) => (
                   <option key={b.batch_id} value={b.batch_id}>
                     {b.batch_no} — {fmtInt(b.qty)} adet ({fmtDate(b.received_on)}){b.opening ? " · açılış stoğu" : ""}
@@ -205,7 +205,7 @@ export function DeliverForm({ options, today, initialVariant }: { options: Deliv
           </dl>
           <div className="border-t border-line">
             <p className="px-3 pt-2.5 text-xs font-medium text-ink-soft">
-              {batchId ? "Seçilen partiden düşülecek" : "FIFO ile düşülecek partiler (en eski önce)"}
+              {batchId ? "Seçilen partiden düşülecek" : "Düşülecek partiler (en eski önce)"}
             </p>
             {plan.length === 0 ? (
               <p className="px-3 pt-1 pb-3 text-xs text-ink-muted">Seçilen tarihte bu varyant için Heatemp rafında parti yok.</p>

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 const FEATURES: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: Factory, title: "Üretim ve parti maliyeti", text: "Reçeteden üretim simülasyonu, parti başlatma ve gerçekleşen birim maliyet." },
   { icon: Warehouse, title: "Heatemp ve Mekonsis rafları", text: "Teslimatlar, raf stoku ve stok hareketleri; teslimat satış sayılmaz." },
-  { icon: TrendingUp, title: "Satış ve brüt kâr", text: "Gerçekleşen satışlar, FIFO parti maliyeti ve dönemsel kârlılık." },
+  { icon: TrendingUp, title: "Satış ve brüt kâr", text: "Gerçekleşen satışlar, Heatemp/Mekonsis payları ve dönemsel kârlılık." },
   { icon: Coins, title: "Sabitlenen USD/TRY kuru", text: "Her işlem kendi günündeki kurla kaydedilir; geçmiş değişmez." },
 ];
 

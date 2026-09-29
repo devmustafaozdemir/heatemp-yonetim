@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FormField } from "@/components/forms";
 import type { Unit, UnitKind } from "@/lib/types";
 
@@ -19,9 +19,21 @@ export function BomLineFields({ materials, units }: { materials: BomMaterialOpti
   const options = useMemo(() => units.filter((u) => u.kind === material?.unit_kind), [units, material]);
   const [unit, setUnit] = useState("");
   const selectedUnit = options.some((o) => o.code === unit) ? unit : (material?.display_unit ?? "");
+  // "Reçeteye kaydet" başarılı olunca form sıfırlanır; seçili malzeme ve birim de temizlenir.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const form = ref.current?.closest("form");
+    if (!form) return;
+    const onReset = () => {
+      setMaterialId("");
+      setUnit("");
+    };
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, []);
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
+    <div ref={ref} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
       <FormField name="material_id" label="Malzeme" required>
         <select
           className="input"

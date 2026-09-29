@@ -79,10 +79,6 @@ export function FinanceTrendChart({
             color: mode === "tl" ? CHART.blue : undefined,
           },
           {
-            label: "Satış maliyeti (FIFO)",
-            value: fmtMoney(p.cogs_try, "TRY"),
-          },
-          {
             label: "Brüt kâr",
             value: fmtMoney(p.gross_profit_try, "TRY"),
             color: mode === "tl" ? CHART.teal : undefined,
@@ -115,7 +111,7 @@ export function FinanceTrendChart({
     <Card
       title="Ciro ve brüt kâr"
       icon={LineChartIcon}
-      description="Gerçekleşen satışlar; brüt kâr = ciro − FIFO parti maliyeti. Teslimatlar ciro oluşturmaz."
+      description="Gerçekleşen satışlar. Teslimatlar ciro oluşturmaz."
       actions={
         <>
           {granularityControl}
@@ -168,7 +164,6 @@ export function FinanceTrendChart({
                   <th className="num">Satış</th>
                   <th className="num">Adet</th>
                   <th className="num">Ciro (TL)</th>
-                  <th className="num">Maliyet (TL)</th>
                   <th className="num">Brüt kâr (TL)</th>
                   <th className="num">Marj</th>
                 </tr>
@@ -182,7 +177,6 @@ export function FinanceTrendChart({
                       <td className="num">{fmtInt(p.sale_count)}</td>
                       <td className="num">{fmtInt(p.quantity)}</td>
                       <td className="num">{fmtMoney(p.revenue_try, "TRY")}</td>
-                      <td className="num">{fmtMoney(p.cogs_try, "TRY")}</td>
                       <td className={cx("num", p.gross_profit_try < 0 && "text-chart-red")}>{fmtMoney(p.gross_profit_try, "TRY")}</td>
                       <td className="num">{pct1(p.revenue_try > 0 ? (p.gross_profit_try / p.revenue_try) * 100 : null)}</td>
                     </tr>

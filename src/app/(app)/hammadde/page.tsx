@@ -21,6 +21,9 @@ import { TopValueChart, type TopValueRow } from "./_components/TopValueChart";
 import { toOption, type MaterialListRow, type MonthlyFlowRow } from "./_components/types";
 import { createMaterial } from "./actions";
 import { MaterialFields } from "./MaterialForm";
+import { DeleteButton } from "@/components/DeleteButton";
+import { deleteMaterial } from "./actions";
+import { DELETE_MATERIAL_TEXT } from "./_components/bits";
 import { ReceiveForm } from "./ReceiveForm";
 import { SupplierSpendChart } from "./_components/SupplierSpendChart";
 
@@ -181,8 +184,15 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath: BASE, values };
   const filtered = Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k));
   const rowAction = (m: MaterialListRow) =>
-    isAdmin && m.is_active ? (
-      <RowReceiveDrawer m={m} vatRate={vatRates.get(m.id) ?? 20} units={allUnits} unitsError={units.error} suppliers={suppliers} today={today} />
+    isAdmin ? (
+      <span className="inline-flex items-center gap-0.5">
+        {m.is_active ? (
+          <RowReceiveDrawer m={m} vatRate={vatRates.get(m.id) ?? 20} units={allUnits} unitsError={units.error} suppliers={suppliers} today={today} />
+        ) : null}
+        <DeleteButton action={deleteMaterial} fields={{ id: m.id }} title={`${m.name} silinsin mi?`} label={`${m.code} sil`} compact>
+          {DELETE_MATERIAL_TEXT}
+        </DeleteButton>
+      </span>
     ) : null;
 
   const attentionTitle = critical.length > 0 ? "Dikkat gerektirenler" : "Reçete stok kapsamı";

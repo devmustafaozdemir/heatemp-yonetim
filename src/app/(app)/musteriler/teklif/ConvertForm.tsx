@@ -13,7 +13,7 @@ export function ConvertForm({ quoteId, today, disabled }: { quoteId: string; tod
   return (
     <ActionForm
       action={convertQuote}
-      confirmMessage="Teklif satışa dönüştürülsün mü? Güncel Mekonsis stoğu yeniden kontrol edilir ve ürünler FIFO ile düşülür."
+      confirmMessage="Teklif satışa dönüştürülsün mü? Güncel Mekonsis stoğu yeniden kontrol edilir ve ürünler raftan düşülür."
     >
       <input type="hidden" name="quote_id" value={quoteId} />
       <div className="space-y-3">

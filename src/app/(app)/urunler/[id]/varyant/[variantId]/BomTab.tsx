@@ -2,7 +2,7 @@ import { Calculator, Copy, ListTree, PieChart, Plus, Trash2 } from "lucide-react
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { Alert, ButtonLink, Card, DefinitionList, EmptyState, ErrorState, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
-import { fmtInt, fmtMinutes, fmtMoney, fmtNum, fmtQty, fmtUnitMoney, toNumber } from "@/lib/format";
+import { fmtInt, fmtMinutes100, fmtMoney, fmtNum, fmtQty, fmtUnitMoney, toNumber } from "@/lib/format";
 import { load, type Loaded } from "@/lib/query";
 import type { BomItem, Unit, VariantView } from "@/lib/types";
 import { materialUnitCost, priceMinusEstimate } from "../../../_components/bits";
@@ -301,8 +301,8 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                   columns={1}
                   items={[
                     ["Tanımlı satış fiyatı", fmtMoney(e.sale_price, e.currency)],
-                    ["Fiyat − tahmini maliyet", margin ? fmtUnitMoney(margin.diff, e.currency) : "—"],
-                    ["Birim üretim süresi", fmtMinutes(e.unit_production_minutes)],
+                    ["Tahmini kâr", margin ? fmtUnitMoney(margin.diff, e.currency) : "—"],
+                    ["Üretim süresi (100 adet)", fmtMinutes100(e.unit_production_minutes)],
                     ["Mevcut hammaddeyle üretilebilir", `${fmtInt(sim.max_producible)} adet`],
                   ]}
                 />

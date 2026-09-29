@@ -1,5 +1,6 @@
 import { FormField } from "@/components/forms";
 import { FormSection } from "@/components/ui";
+import { minutesPer100 } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 /** Ürün formu alanları (oluşturma ve düzenleme), mantıksal gruplar halinde. */
@@ -34,14 +35,14 @@ export function ProductFields({ product }: { product?: Product }) {
               <option value="TRY">TRY</option>
             </select>
           </FormField>
-          <FormField name="unit_production_minutes" label="Birim üretim süresi (dk)" hint="1 adet için sabit süre" required>
+          <FormField name="unit_production_minutes" label="Üretim süresi (100 adet, dk)" hint="100 adet üretmek için gereken süre (dakika)" required>
             <input
               className="input"
               name="unit_production_minutes"
               inputMode="decimal"
               required
               aria-required
-              defaultValue={product?.unit_production_minutes ?? 0}
+              defaultValue={product ? minutesPer100(product.unit_production_minutes) : 0}
             />
           </FormField>
         </div>
