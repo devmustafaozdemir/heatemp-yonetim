@@ -94,6 +94,7 @@ export interface MaterialMovement {
   movement_type: "purchase" | "purchase_reversal" | "production_consume" | "production_return" | "write_off";
   /** purchase_reversal: kapattığı alış hareketi */
   reverses_movement_id?: number | null;
+  corrected_at?: string | null;
   movement_date: string;
   qty: number;
   value_try: number;

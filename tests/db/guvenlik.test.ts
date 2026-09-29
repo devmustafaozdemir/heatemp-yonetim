@@ -134,7 +134,7 @@ const DEFINER_ALLOWLIST = [
   "complete_production(uuid)",
   "convert_quote_to_sale(uuid,date,bigint,uuid)",
   "copy_bom(uuid,uuid)",
-  "correct_material_purchase(bigint,text,numeric,text,numeric,text,bigint,date,text,text,uuid)",
+  "delete_material_movement(bigint)",
   "deliver_to_mekonsis(uuid,integer,uuid,date,text,uuid)",
   "fx_rate_for_date(date)",
   "is_admin()",
@@ -148,6 +148,7 @@ const DEFINER_ALLOWLIST = [
   "simulate_production(uuid,integer)",
   "start_production(uuid,integer,bigint,text,uuid)",
   "write_off_material(uuid,numeric,text,text,uuid)",
+  "update_material_purchase(bigint,numeric,text,numeric,text,bigint,date,text,text)",
 ].sort();
 
 /** Salt okunur rapor fonksiyonları (SECURITY INVOKER): üye olmayan hiçbir veri görmemeli. */
