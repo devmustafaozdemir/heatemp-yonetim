@@ -11,7 +11,8 @@ Yeni bir CSS dosyası, ikinci bir tema veya satır içi renk kodu eklemeyin; ren
 | Kart | `.card` — beyaz, 1px `border-line`, hafif gölge, 6px köşe |
 | Sol menü | koyu lacivert `bg-nav` (#1e2945), metin `text-nav-text`, grup başlığı `text-nav-title` |
 | Ana vurgu | `brand-600` (#405189) — birincil buton, etkin sekme, bağlantı |
-| Grafik/durum | `chart-blue` #3577f1 · `chart-teal` #0ab39c (olumlu/kâr) · `chart-sky` #299cdb · `chart-amber` #f7b84b (uyarı) · `chart-red` #f06548 (kritik/zarar) · `chart-violet` #6559cc |
+| Grafik/durum | `chart-blue` #3577f1 · `chart-teal` #0ab39c (olumlu/kâr) · `chart-sky` #299cdb · `chart-amber` #f7b84b (uyarı) · `chart-orange` #f1963b (minimum altı) · `chart-red` #f06548 (kritik/zarar) · `chart-violet` #6559cc |
+| Küçük renkli metin (AA kontrast) | `text-success-ink` · `text-danger-ink` · `text-warning-ink` · `text-info-ink` · `text-accent-ink` — küçük metinde `text-chart-*` kullanmayın |
 | Metin | başlık `text-ink`, gövde `text-ink-soft`, yardımcı `text-ink-muted` |
 | Sayılar | `tabular-nums`, tablolarda `.num` (sağa hizalı) |
 | İkonlar | yalnızca `lucide-react` çizgi ikonları; emoji veya ●▼✓ gibi simgeler kullanılmaz |
@@ -49,6 +50,26 @@ Masaüstünde form + özet yan yana: `grid gap-4 xl:grid-cols-[minmax(0,1fr)_380
 | `ActionForm`, `FormField`, `SubmitButton`, `FieldError` | `components/forms.tsx` | çift gönderim engeli, alan yanı hata, başarı bildirimi |
 | `ChartFrame`, `TooltipBox`, `Segmented`, `DonutChart`, `HBarChart`, `CHART`, `AXIS_TICK`, `GRID_PROPS` | `components/charts/kit.tsx` | Recharts; boş durum dahil |
 | `StockStatusBadge`, `STOCK_STATUS` | `components/StockStatus.tsx` | renk + ikon + metin |
+
+### Ortak bileşen seçenekleri (özet)
+
+- `StatCard`: `scope` rozeti her zaman etiketin altında (kartlar hizalı), ikon küçük ve sağ üstte, değer tam genişlik;
+  `error` verilirse değer yerine "Veri yüklenemedi" yazar. Izgara: `STAT_GRID` (mobilde 2, xl'de 4 sütun).
+- `Dialog`/`Drawer`/`Modal`: `trigger` (düğmeli) veya `open` + `onOpenChange` (kontrollü, ör. tablo satırından açma),
+  `defaultOpen` + `clearParam="islem"` (?islem=… ile açılır, parametre adresten silinir), `onClose`.
+- `ListToolbar`: `preserveKeys` (ör. `["sekme"]`, `["donem","gorunum"]` — filtre sayılmaz, temizlemede korunur),
+  `hash` (sayfanın aşağısındaki listelerde konum korunur), `sortOptions` (kart/mobil görünümde sıralama),
+  filtrede `resets` (ürün değişince varyantı sıfırla). Arama kutusu kontrolsüzdür; yazarken harf kaybolmaz.
+- `Pagination` / `SortTh`: `hash` — sayfanın aşağısındaki tabloda sayfa değişince en üste atlamaz.
+- `LinkSegmented`: `label` (erişilebilir grup adı).
+- `load()` sonucu `code` içerir; sayfa numarası aralık dışındaysa `redirectIfOutOfRange(res, lp, basePath, hash)`
+  ilk sayfaya yönlendirir (416 hata olarak gösterilmez).
+- `FormField`: ipucu/hata etiketin dışında ve `aria-describedby` ile bağlı; tek girdide `aria-invalid`/`aria-required` otomatik.
+- `SubmitButton` ek düğme özelliklerini (ör. `aria-describedby`) geçirir; `ActionForm showErrorMessage={false}`
+  genel hatayı kendiniz yerleştirmek içindir.
+- `FxRateField initialSuggestion` sunucuda alınmış kuru kullanır (ilk sorgu atlanır); tarih boşsa kur gönderilmez.
+- `DonutChart emptyText`, kapsayıcı genişliğine göre yerleşim; `HBarChart valueLabel`, `labelWidth`.
+- `TableWrap` `relative`tir: hücredeki `sr-only` metinler sayfayı yatay kaydırmaz.
 
 ### Özet kartı
 

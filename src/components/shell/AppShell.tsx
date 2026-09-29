@@ -70,7 +70,7 @@ export function AppShell({
       {/* Mobil/tablet menü */}
       <div className={cx("fixed inset-0 z-50 lg:hidden", mobileOpen ? "" : "pointer-events-none")} inert={!mobileOpen}>
         <div
-          className={cx("absolute inset-0 bg-[#12192b]/50 transition-opacity", mobileOpen ? "opacity-100" : "opacity-0")}
+          className={cx("absolute inset-0 bg-nav/60 transition-opacity", mobileOpen ? "opacity-100" : "opacity-0")}
           onClick={() => setMobileOpen(false)}
         />
         <div

@@ -48,7 +48,7 @@ export function Breadcrumbs({ extra = [], current }: { extra?: Crumb[]; current?
               <li aria-hidden>
                 <ChevronRight className="size-3.5 text-ink-muted/60" />
               </li>
-              <li className="max-w-[16rem] truncate">
+              <li className="max-w-[16rem] truncate" title={c.label}>
                 {c.href && !last ? (
                   <Link href={c.href} className="hover:text-brand-600">
                     {c.label}

@@ -19,6 +19,7 @@ export function StockValueDonut({
   return (
     <DonutChart
       label="Güncel stok değeri dağılımı: Heatemp rafı, Mekonsis rafı, hammadde ve üretimdeki partiler (TL)"
+      emptyText="Stok değeri yok."
       centerLabel="Toplam stok"
       centerValue={fmtCompactMoney(total, "TRY")}
       format={(v) => fmtMoney(v, "TRY")}

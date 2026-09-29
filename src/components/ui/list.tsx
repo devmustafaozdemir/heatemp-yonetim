@@ -15,6 +15,7 @@ export function SortTh({
   align = "left",
   title,
   className,
+  hash,
 }: {
   label: ReactNode;
   column: string;
@@ -25,6 +26,8 @@ export function SortTh({
   align?: "left" | "right";
   title?: string;
   className?: string;
+  /** Sayfanın aşağısındaki tablolarda konumu korumak için bağlantıya eklenecek #çapa */
+  hash?: string;
 }) {
   const active = sort === column;
   const nextDir = active && dir === "desc" ? "asc" : "desc";
@@ -32,7 +35,7 @@ export function SortTh({
   return (
     <th className={cx(align === "right" && "num", className)} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined} title={title}>
       <Link
-        href={hrefWith(basePath, values, { sirala: column, yon: nextDir, sayfa: null })}
+        href={hrefWith(basePath, values, { sirala: column, yon: nextDir, sayfa: null }) + (hash ? `#${hash}` : "")}
         className={cx("inline-flex items-center gap-1 hover:text-brand-600", align === "right" && "flex-row-reverse", active && "text-brand-700")}
         scroll={false}
       >
@@ -51,6 +54,7 @@ export function Pagination({
   pageSize,
   total,
   noun = "kayıt",
+  hash,
 }: {
   basePath: string;
   values: Record<string, string>;
@@ -58,13 +62,16 @@ export function Pagination({
   pageSize: number;
   total: number;
   noun?: string;
+  /** Sayfanın aşağısındaki listelerde sayfa değişince konumu korumak için #çapa (liste kartının id'si) */
+  hash?: string;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (total === 0) return null;
   const start = (page - 1) * pageSize + 1;
   const end = Math.min(total, page * pageSize);
   const windowPages = Array.from(new Set([1, page - 1, page, page + 1, pages].filter((p) => p >= 1 && p <= pages))).sort((a, b) => a - b);
-  const link = (p: number) => hrefWith(basePath, values, { sayfa: p === 1 ? null : p });
+  const h = hash ? `#${hash}` : "";
+  const link = (p: number) => hrefWith(basePath, values, { sayfa: p === 1 ? null : p }) + h;
   const btn = "inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-medium";
 
   return (
@@ -81,7 +88,7 @@ export function Pagination({
           {PAGE_SIZES.map((s) => (
             <Link
               key={s}
-              href={hrefWith(basePath, values, { adet: s === 25 ? null : s, sayfa: null })}
+              href={hrefWith(basePath, values, { adet: s === 25 ? null : s, sayfa: null }) + h}
               aria-current={s === pageSize ? "true" : undefined}
               className={cx(btn, "h-7 min-w-7", s === pageSize ? "bg-brand-50 text-brand-700" : "hover:bg-canvas")}
             >
@@ -171,9 +178,18 @@ export function LinkTabs({
 }
 
 /** Durum filtresi gibi kısa seçenekler için bağlantılı segmentli düğme grubu. */
-export function LinkSegmented({ items, active }: { items: { key: string; label: ReactNode; href: string }[]; active: string }) {
+export function LinkSegmented({
+  items,
+  active,
+  label,
+}: {
+  items: { key: string; label: ReactNode; href: string }[];
+  active: string;
+  /** Grup için erişilebilir ad (ör. "Satış durumu") */
+  label?: string;
+}) {
   return (
-    <div className="inline-flex flex-wrap rounded-md bg-canvas p-0.5">
+    <nav aria-label={label} className="inline-flex flex-wrap rounded-md bg-canvas p-0.5">
       {items.map((it) => (
         <Link
           key={it.key}
@@ -188,6 +204,6 @@ export function LinkSegmented({ items, active }: { items: { key: string; label: 
           {it.label}
         </Link>
       ))}
-    </div>
+    </nav>
   );
 }

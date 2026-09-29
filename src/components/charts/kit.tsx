@@ -17,6 +17,7 @@ export const CHART = {
   red: "#f06548",
   violet: "#6559cc",
   slate: "#878a99",
+  orange: "#f1963b",
   brand: "#405189",
   grid: "#eef0f3",
   axis: "#878a99",
@@ -42,7 +43,10 @@ export function ChartFrame({
 }) {
   if (empty) {
     return (
-      <div style={{ height }} className="flex flex-col items-center justify-center rounded-md border border-dashed border-line-strong bg-[#fafbfc] px-4 text-center">
+      <div
+        style={{ height }}
+        className="flex flex-col items-center justify-center rounded-md border border-dashed border-line-strong bg-canvas/40 px-4 text-center"
+      >
         <BarChart3 className="mb-2 size-6 text-ink-muted/70" aria-hidden />
         <p className="text-[13px] text-ink-muted">{emptyText}</p>
       </div>
@@ -117,6 +121,7 @@ export function DonutChart({
   format,
   height = 220,
   label,
+  emptyText = "Gösterilecek değer yok.",
 }: {
   data: { name: string; value: number; color: string; hint?: string }[];
   centerLabel: string;
@@ -124,62 +129,74 @@ export function DonutChart({
   format: (v: number) => string;
   height?: number;
   label: string;
+  emptyText?: string;
 }) {
   const total = data.reduce((a, d) => a + d.value, 0);
   const empty = total <= 0;
+  const share = (v: number) => `%${((v / total) * 100).toLocaleString("tr-TR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+  // Yerleşim kartın genişliğine göre: dar kartta halka üstte, açıklama altta.
   return (
-    <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
-      <div className="relative">
-        <ChartFrame height={height} label={label} empty={empty} emptyText="Rafta stok yok.">
-          <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="92%" paddingAngle={data.filter((d) => d.value > 0).length > 1 ? 2 : 0} stroke="none" isAnimationActive={false}>
-              {data.map((d) => (
-                <Cell key={d.name} fill={d.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const p = payload[0].payload as (typeof data)[number];
-                return (
-                  <TooltipBox
-                    title={p.name}
-                    rows={[
-                      { label: "Değer", value: format(p.value), color: p.color },
-                      { label: "Pay", value: `%${((p.value / total) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}` },
-                    ]}
-                  />
-                );
-              }}
-            />
-          </PieChart>
-        </ChartFrame>
-        {!empty ? (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-[11px] text-ink-muted">{centerLabel}</span>
-            <span className="text-[15px] font-semibold text-ink tabular-nums">{centerValue}</span>
-          </div>
-        ) : null}
+    <div className="@container">
+      <div className="grid items-center gap-4 @min-[420px]:grid-cols-[minmax(0,200px)_1fr]">
+        <div className="relative mx-auto w-full max-w-[220px]">
+          <ChartFrame height={height} label={label} empty={empty} emptyText={emptyText}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius="64%"
+                outerRadius="92%"
+                paddingAngle={data.filter((d) => d.value > 0).length > 1 ? 2 : 0}
+                stroke="none"
+                isAnimationActive={false}
+              >
+                {data.map((d) => (
+                  <Cell key={d.name} fill={d.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const p = payload[0].payload as (typeof data)[number];
+                  return (
+                    <TooltipBox
+                      title={p.name}
+                      rows={[
+                        { label: "Değer", value: format(p.value), color: p.color },
+                        { label: "Pay", value: share(p.value) },
+                      ]}
+                    />
+                  );
+                }}
+              />
+            </PieChart>
+          </ChartFrame>
+          {!empty ? (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span className="text-[11px] text-ink-muted">{centerLabel}</span>
+              <span className="text-[15px] font-semibold text-ink tabular-nums">{centerValue}</span>
+            </div>
+          ) : null}
+        </div>
+        <ul className="space-y-2.5">
+          {data.map((d) => (
+            <li key={d.name} className="flex items-start justify-between gap-3 text-[13px]">
+              <span className="flex min-w-0 items-start gap-2">
+                <span className="mt-1 size-2.5 shrink-0 rounded-sm" style={{ background: d.color }} aria-hidden />
+                <span className="min-w-0">
+                  <span className="block font-medium text-ink">{d.name}</span>
+                  {d.hint ? <span className="block text-xs text-ink-muted">{d.hint}</span> : null}
+                </span>
+              </span>
+              <span className="text-right">
+                <span className="block font-semibold text-ink tabular-nums">{format(d.value)}</span>
+                <span className="block text-xs text-ink-muted tabular-nums">{total > 0 ? share(d.value) : "—"}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="space-y-2.5">
-        {data.map((d) => (
-          <li key={d.name} className="flex items-start justify-between gap-3 text-[13px]">
-            <span className="flex min-w-0 items-start gap-2">
-              <span className="mt-1 size-2.5 shrink-0 rounded-sm" style={{ background: d.color }} aria-hidden />
-              <span className="min-w-0">
-                <span className="block font-medium text-ink">{d.name}</span>
-                {d.hint ? <span className="block text-xs text-ink-muted">{d.hint}</span> : null}
-              </span>
-            </span>
-            <span className="text-right">
-              <span className="block font-semibold text-ink tabular-nums">{format(d.value)}</span>
-              <span className="block text-xs text-ink-muted tabular-nums">
-                {total > 0 ? `%${((d.value / total) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}` : "—"}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -193,6 +210,8 @@ export function HBarChart({
   label,
   tooltipRows,
   emptyText,
+  valueLabel = "Değer",
+  labelWidth = 150,
 }: {
   data: { key: string; label: string; value: number }[];
   format: (v: number) => string;
@@ -202,7 +221,12 @@ export function HBarChart({
   /** Tooltip'te değerin yanında gösterilecek ek satırlar */
   tooltipRows?: (key: string) => { label: string; value: string }[];
   emptyText?: string;
+  /** Tooltip'teki değer satırının birimli etiketi (ör. "Ciro (TL)") */
+  valueLabel?: string;
+  /** Kategori ekseni genişliği (px); uzun adlar bu genişliğe göre kısaltılır */
+  labelWidth?: number;
 }) {
+  const maxChars = Math.max(12, Math.floor(labelWidth / 6.8));
   const height = Math.max(160, data.length * 34 + 30);
   return (
     <ChartFrame height={height} label={label} empty={data.length === 0} emptyText={emptyText}>
@@ -211,18 +235,20 @@ export function HBarChart({
         <YAxis
           type="category"
           dataKey="label"
-          width={150}
+          width={labelWidth}
           tick={{ ...AXIS_TICK, fill: "#495057" }}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 21)}…` : v)}
+          tickFormatter={(v: string) => (v.length > maxChars ? `${v.slice(0, maxChars - 1)}…` : v)}
         />
         <Tooltip
           cursor={{ fill: "rgba(64,81,137,0.05)" }}
           content={({ active, payload }) => {
             if (!active || !payload?.length) return null;
             const p = payload[0].payload as (typeof data)[number];
-            return <TooltipBox title={p.label} rows={[{ label: "Değer", value: format(p.value), color }, ...(tooltipRows?.(p.key) ?? [])]} />;
+            return (
+              <TooltipBox title={p.label} rows={[{ label: valueLabel, value: format(p.value), color }, ...(tooltipRows?.(p.key) ?? [])]} />
+            );
           }}
         />
         <Bar dataKey="value" fill={color} radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive={false} />

@@ -85,9 +85,9 @@ export function CostChange({ pct, prev }: { pct: number | null; prev: string | n
     );
   const n = Number(pct);
   const Icon = n > 0 ? ArrowUpRight : ArrowDownRight;
-  const tone = n > 0 ? "text-[#d4472b]" : n < 0 ? "text-[#08917e]" : "text-ink-muted";
+  const tone = n > 0 ? "text-danger-ink" : n < 0 ? "text-success-ink" : "text-ink-muted";
   return (
-    <span className={`inline-flex items-center gap-0.5 font-medium tabular-nums ${tone}`} title={prev ? `Önceki tamamlanan parti: ${prev}` : undefined}>
+    <span className={`relative inline-flex items-center gap-0.5 font-medium tabular-nums ${tone}`} title={prev ? `Önceki tamamlanan parti: ${prev}` : undefined}>
       {n !== 0 ? <Icon className="size-3.5" aria-hidden /> : null}
       {n > 0 ? "+" : n < 0 ? "−" : ""}%{Math.abs(n).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
       <span className="sr-only">{n > 0 ? " artış" : n < 0 ? " düşüş" : ""}</span>

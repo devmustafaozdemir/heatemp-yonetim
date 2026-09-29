@@ -29,6 +29,14 @@
   --color-chart-red: #f06548;
   --color-chart-violet: #6559cc;
   --color-chart-slate: #878a99;
+  --color-chart-orange: #f1963b;
+
+  /* Küçük metin için AA kontrastlı koyu tonlar (rozet, değişim, uyarı metni) */
+  --color-success-ink: #077a6a;
+  --color-danger-ink: #c23c1f;
+  --color-warning-ink: #8a5b0a;
+  --color-info-ink: #1c6d99;
+  --color-accent-ink: #2459c4;
 
   /* Yüzeyler ve metin */
   --color-canvas: #f3f3f9;
@@ -134,11 +142,12 @@
     @apply px-2.5 py-1.5;
   }
 
-  .link {
-    @apply font-medium text-brand-600 hover:text-brand-800 hover:underline;
-  }
   .code {
     @apply font-mono text-xs whitespace-nowrap text-ink-soft;
+  }
+  /* .link .code'dan sonra: birlikte kullanılınca bağlantı rengi korunur */
+  .link {
+    @apply font-medium text-brand-600 hover:text-brand-800 hover:underline;
   }
   .muted {
     @apply text-xs text-ink-muted;

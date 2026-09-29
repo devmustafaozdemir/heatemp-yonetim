@@ -43,7 +43,7 @@ export function UserMenu({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex h-14 items-center gap-2 bg-[#f3f3f9] px-2.5 hover:bg-[#ebecf3] sm:px-3"
+        className="flex h-14 items-center gap-2 bg-canvas px-2.5 hover:bg-line sm:px-3"
       >
         <span className="flex size-8 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white" aria-hidden>
           {initials}

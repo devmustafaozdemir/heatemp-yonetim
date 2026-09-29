@@ -60,6 +60,8 @@ export function toUserMessage(error: unknown): string {
       return "Sayı veya tarih biçimi geçersiz.";
     case "42501":
       return isTurkishDomainMessage(message) ? message : "Bu işlem için yetkiniz yok.";
+    case "PGRST103":
+      return "İstenen sayfa sonuçların dışında. İlk sayfaya dönün.";
     case "PGRST301":
     case "PGRST302":
       return "Oturumunuz sona ermiş. Lütfen yeniden giriş yapın.";

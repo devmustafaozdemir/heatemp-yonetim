@@ -15,6 +15,7 @@ export function ShelfValueChart({
   return (
     <DonutChart
       label={`Raf değeri dağılımı: Heatemp rafı ${fmtMoney(heatemp.value, "TRY")}, Mekonsis rafı ${fmtMoney(mekonsis.value, "TRY")}`}
+      emptyText="Raflarda stok yok."
       centerLabel="Toplam mamul"
       centerValue={fmtCompactMoney(total, "TRY")}
       format={(v) => fmtMoney(v, "TRY")}

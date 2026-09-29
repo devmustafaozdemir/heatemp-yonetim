@@ -32,7 +32,7 @@ export function PageHeader({
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
       <div className="min-w-0">
-        <Breadcrumbs extra={extra} current={typeof title === "string" ? title : undefined} />
+        <Breadcrumbs extra={extra} current={typeof title === "string" && !crumbs?.length ? title : undefined} />
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg leading-tight font-semibold text-ink sm:text-xl">{title}</h1>
           {meta}
@@ -88,13 +88,14 @@ export function Card({
   );
 }
 
-export type Tone = "blue" | "teal" | "sky" | "amber" | "red" | "violet" | "slate" | "brand";
+export type Tone = "blue" | "teal" | "sky" | "amber" | "orange" | "red" | "violet" | "slate" | "brand";
 
 const SOFT: Record<Tone, string> = {
   blue: "bg-chart-blue/10 text-chart-blue",
   teal: "bg-chart-teal/10 text-chart-teal",
   sky: "bg-chart-sky/10 text-chart-sky",
-  amber: "bg-chart-amber/15 text-[#c98a1c]",
+  amber: "bg-chart-amber/15 text-warning-ink",
+  orange: "bg-chart-orange/12 text-chart-orange",
   red: "bg-chart-red/10 text-chart-red",
   violet: "bg-chart-violet/10 text-chart-violet",
   slate: "bg-slate-100 text-slate-600",
@@ -113,6 +114,9 @@ export function IconBox({ icon: Icon, tone = "brand", size = "md" }: { icon: Luc
 /**
  * Özet kartı. `delta` yalnızca gerçekten hesaplanabiliyorsa verilir; önceki dönem
  * değeri 0 veya bilinmiyorsa `delta.pct = null` ile "karşılaştırma yok" yazılır.
+ * Yerleşim: etiket + kapsam rozeti (her zaman ayrı satır, kartlar hizalı) solda, ikon sağda;
+ * değer kartın tüm genişliğini kullanır (dar kartta ikona değmez). Mobilde iki sütuna sığar.
+ * Sorgu hatasında `error` verilir: değer yerine hata yazılır ("0" gösterilmez).
  */
 export function StatCard({
   label,
@@ -124,9 +128,10 @@ export function StatCard({
   delta,
   scope,
   href,
+  error,
 }: {
   label: ReactNode;
-  value: ReactNode;
+  value?: ReactNode;
   unit?: ReactNode;
   icon: LucideIcon;
   tone?: Tone;
@@ -136,32 +141,46 @@ export function StatCard({
   /** "Seçilen dönem", "Güncel stok" gibi kapsam etiketi */
   scope?: ReactNode;
   href?: string;
+  /** Sorgu hatası mesajı */
+  error?: string | null;
 }) {
   const body = (
-    <div className="flex h-full items-start justify-between gap-3 p-4">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="text-xs font-medium tracking-wide text-ink-muted uppercase">{label}</p>
-          {scope ? <span className="rounded bg-canvas px-1.5 py-px text-[10.5px] font-medium text-ink-muted">{scope}</span> : null}
+    <div className="flex h-full flex-col p-3 sm:p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] leading-4 font-medium tracking-wide text-ink-muted uppercase sm:text-xs">{label}</p>
+          {scope ? <span className="mt-1 inline-block rounded bg-canvas px-1.5 py-px text-[10.5px] font-medium text-ink-muted">{scope}</span> : null}
         </div>
-        <p className="mt-2.5 flex flex-wrap items-baseline gap-x-1.5 text-[22px] leading-none font-semibold text-ink tabular-nums">
-          {value}
-          {unit ? <span className="text-[13px] font-medium text-ink-muted">{unit}</span> : null}
-        </p>
-        {delta ? <DeltaText {...delta} /> : null}
-        {description ? <p className="mt-1.5 text-xs text-ink-muted">{description}</p> : null}
+        <IconBox icon={icon} tone={error ? "red" : tone} size="sm" />
       </div>
-      <IconBox icon={icon} tone={tone} size="lg" />
+      {error ? (
+        <div role="alert">
+          <p className="mt-2.5 text-sm font-semibold text-danger-ink">Veri yüklenemedi</p>
+          <p className="mt-1 text-xs break-words text-ink-muted">{error}</p>
+        </div>
+      ) : (
+        <>
+          <p className="mt-2.5 flex flex-wrap items-baseline gap-x-1.5 text-lg leading-tight font-semibold break-words text-ink tabular-nums sm:text-[22px]">
+            {value}
+            {unit ? <span className="text-xs font-medium text-ink-muted sm:text-[13px]">{unit}</span> : null}
+          </p>
+          {delta ? <DeltaText {...delta} /> : null}
+          {description ? <p className="mt-1.5 text-xs text-ink-muted">{description}</p> : null}
+        </>
+      )}
     </div>
   );
-  return href ? (
-    <Link href={href} className="card block transition-shadow hover:shadow-(--shadow-pop)">
+  return href && !error ? (
+    <Link href={href} className="card block min-w-0 transition-shadow hover:shadow-(--shadow-pop)">
       {body}
     </Link>
   ) : (
-    <div className="card">{body}</div>
+    <div className="card min-w-0">{body}</div>
   );
 }
+
+/** Özet kartı ızgarası: mobilde 2, geniş ekranda 4 sütun (kartlar eşit yükseklikte). */
+export const STAT_GRID = "grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4";
 
 export function DeltaText({ pct, label, invert = false }: { pct: number | null; label: string; invert?: boolean }) {
   if (pct === null || !Number.isFinite(pct)) {
@@ -177,7 +196,7 @@ export function DeltaText({ pct, label, invert = false }: { pct: number | null; 
       <span
         className={cx(
           "inline-flex items-center gap-0.5 rounded px-1 py-px font-semibold",
-          good === null ? "bg-slate-100 text-slate-600" : good ? "bg-chart-teal/10 text-[#08917e]" : "bg-chart-red/10 text-[#d4472b]",
+          good === null ? "bg-slate-100 text-slate-600" : good ? "bg-chart-teal/10 text-success-ink" : "bg-chart-red/10 text-danger-ink",
         )}
       >
         <Icon className="size-3.5" aria-hidden />
@@ -202,8 +221,8 @@ export function Stat({
 }) {
   const toneClass = {
     default: "text-ink",
-    positive: "text-[#08917e]",
-    negative: "text-[#d4472b]",
+    positive: "text-success-ink",
+    negative: "text-danger-ink",
     muted: "text-ink-muted",
   }[tone];
   return (
@@ -236,13 +255,13 @@ export function MetricRow({ items }: { items: { label: ReactNode; value: ReactNo
 export type BadgeTone = "gray" | "green" | "red" | "amber" | "blue" | "orange" | "violet" | "sky";
 const BADGE: Record<BadgeTone, string> = {
   gray: "bg-slate-100 text-slate-700",
-  green: "bg-chart-teal/12 text-[#078a78]",
-  red: "bg-chart-red/12 text-[#cc3f22]",
-  amber: "bg-chart-amber/20 text-[#9a6711]",
-  blue: "bg-chart-blue/12 text-[#2462d4]",
+  green: "bg-chart-teal/12 text-success-ink",
+  red: "bg-chart-red/12 text-danger-ink",
+  amber: "bg-chart-amber/20 text-warning-ink",
+  blue: "bg-chart-blue/12 text-accent-ink",
   orange: "bg-orange-100 text-orange-800",
   violet: "bg-chart-violet/12 text-chart-violet",
-  sky: "bg-chart-sky/12 text-[#1f7fb5]",
+  sky: "bg-chart-sky/12 text-info-ink",
 };
 
 export function Badge({
@@ -326,10 +345,10 @@ export function Alert({
   className?: string;
 }) {
   const tones = {
-    info: "border-chart-sky/30 bg-chart-sky/8 text-[#1c6d99]",
-    warning: "border-chart-amber/40 bg-chart-amber/10 text-[#8a5b0a]",
-    error: "border-chart-red/30 bg-chart-red/8 text-[#b83a20]",
-    success: "border-chart-teal/30 bg-chart-teal/8 text-[#077566]",
+    info: "border-chart-sky/30 bg-chart-sky/8 text-info-ink",
+    warning: "border-chart-amber/40 bg-chart-amber/10 text-warning-ink",
+    error: "border-chart-red/30 bg-chart-red/8 text-danger-ink",
+    success: "border-chart-teal/30 bg-chart-teal/8 text-success-ink",
   };
   const Icon = { info: Info, warning: AlertTriangle, error: AlertCircle, success: CheckCircle2 }[tone];
   return (
@@ -356,8 +375,8 @@ export function buttonClass(variant: ButtonVariant = "primary", size: "sm" | "md
     primary: "bg-brand-600 text-white shadow-sm hover:bg-brand-700",
     secondary: "border border-line-strong bg-white text-ink-soft shadow-sm hover:bg-canvas",
     soft: "bg-brand-50 text-brand-700 hover:bg-brand-100",
-    success: "bg-chart-teal text-white shadow-sm hover:bg-[#099885]",
-    danger: "bg-chart-red text-white shadow-sm hover:bg-[#d9533a]",
+    success: "bg-chart-teal text-white shadow-sm hover:bg-chart-teal/90",
+    danger: "bg-chart-red text-white shadow-sm hover:bg-chart-red/90",
     ghost: "text-ink-soft hover:bg-canvas",
     outline: "border border-brand-300 bg-white text-brand-700 hover:bg-brand-50",
   };
@@ -411,20 +430,22 @@ export function Field({
   required?: boolean;
 }) {
   return (
-    <label className={cx("block", className)} data-invalid={error ? "" : undefined}>
-      <span className="label">
-        {label}
-        {required ? <RequiredMark /> : null}
-      </span>
-      {children}
+    <div className={cx("block min-w-0", className)} data-invalid={error ? "" : undefined}>
+      <label className="block">
+        <span className="label">
+          {label}
+          {required ? <RequiredMark /> : null}
+        </span>
+        {children}
+      </label>
       {error ? (
-        <span className="field-error">
+        <span className="field-error" role="alert">
           <AlertCircle className="size-3.5" aria-hidden />
           {error}
         </span>
       ) : null}
       {!error && hint ? <span className="help">{hint}</span> : null}
-    </label>
+    </div>
   );
 }
 
@@ -449,7 +470,8 @@ export function FormSection({ title, description, children, className }: { title
 // ---------------------------------------------------------------------------
 /** Dar ekranlarda kontrollü yatay kaydırma. */
 export function TableWrap({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("overflow-x-auto overscroll-x-contain [scrollbar-width:thin]", className)}>{children}</div>;
+  // relative: tablo içindeki mutlak konumlu öğeler (sr-only) kaydırma kabından taşıp sayfayı kaydırmasın.
+  return <div className={cx("relative overflow-x-auto overscroll-x-contain [scrollbar-width:thin]", className)}>{children}</div>;
 }
 
 export function Muted({ children }: { children: ReactNode }) {
@@ -478,6 +500,7 @@ export function ProgressBar({ value, max, tone = "blue", label }: { value: numbe
     teal: "bg-chart-teal",
     sky: "bg-chart-sky",
     amber: "bg-chart-amber",
+    orange: "bg-chart-orange",
     red: "bg-chart-red",
     violet: "bg-chart-violet",
     slate: "bg-slate-400",
