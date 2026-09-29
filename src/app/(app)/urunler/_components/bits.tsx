@@ -1,8 +1,7 @@
-import { Package, type LucideIcon } from "lucide-react";
-import Link from "next/link";
+import { Package } from "lucide-react";
 import type { ReactNode } from "react";
 import { STOCK_STATUS } from "@/components/StockStatus";
-import { DeltaText, IconBox, cx, type Tone } from "@/components/ui";
+import { cx } from "@/components/ui";
 import { fmtInt, fmtUnitMoney, toNumber } from "@/lib/format";
 import type { SimulationLine } from "@/lib/types";
 import { productImageUrl } from "../image";
@@ -94,8 +93,9 @@ export function fmtCostRange(min: number | string | null | undefined, max: numbe
 }
 
 const METER_BAR: Record<keyof typeof STOCK_STATUS, string> = {
+  none: "bg-slate-300",
   critical: "bg-chart-red",
-  low: "bg-orange-400",
+  low: "bg-chart-orange",
   below_target: "bg-chart-amber",
   ok: "bg-chart-teal",
 };
@@ -133,58 +133,8 @@ export function StockProgress({
   );
 }
 
-/**
- * Özet kartı. Ortak StatCard ile aynı görünüm; farkı mobilde (640 px altı) iki sütuna
- * sığacak şekilde küçülmesidir: daha az iç boşluk, daha küçük değer, ikon gizli.
- */
-export function StatTile({
-  label,
-  value,
-  unit,
-  icon,
-  tone = "brand",
-  description,
-  delta,
-  scope,
-  href,
-}: {
-  label: ReactNode;
-  value: ReactNode;
-  unit?: ReactNode;
-  icon: LucideIcon;
-  tone?: Tone;
-  description?: ReactNode;
-  delta?: { pct: number | null; label: string; invert?: boolean };
-  scope?: ReactNode;
-  href?: string;
-}) {
-  const body = (
-    <div className="flex h-full items-start justify-between gap-3 p-3 sm:p-4">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="text-[11px] font-medium tracking-wide text-ink-muted uppercase sm:text-xs">{label}</p>
-          {scope ? <span className="rounded bg-canvas px-1.5 py-px text-[10.5px] font-medium text-ink-muted">{scope}</span> : null}
-        </div>
-        <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-lg leading-none font-semibold text-ink tabular-nums sm:mt-2.5 sm:text-[22px]">
-          {value}
-          {unit ? <span className="text-xs font-medium text-ink-muted sm:text-[13px]">{unit}</span> : null}
-        </p>
-        {delta ? <DeltaText {...delta} /> : null}
-        {description ? <p className="mt-1.5 text-xs text-ink-muted">{description}</p> : null}
-      </div>
-      <span className="hidden sm:block">
-        <IconBox icon={icon} tone={tone} size="lg" />
-      </span>
-    </div>
-  );
-  return href ? (
-    <Link href={href} className="card block min-w-0 transition-shadow hover:shadow-(--shadow-pop)">
-      {body}
-    </Link>
-  ) : (
-    <div className="card min-w-0">{body}</div>
-  );
-}
+/** Özet kartı: ortak StatCard (mobilde iki sütuna sığan, hizalı kapsam rozetli). */
+export { StatCard as StatTile } from "@/components/ui";
 
 /**
  * Varyantların stok durumu dağılımı: gerçek sayılardan yatay yığılmış çubuk + açıklama.

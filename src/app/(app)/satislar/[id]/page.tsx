@@ -161,7 +161,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
         </Alert>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           label="Toplam satış"
           scope={cardScope(cur)}

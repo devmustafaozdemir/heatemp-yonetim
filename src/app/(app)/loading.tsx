@@ -16,7 +16,7 @@ export default function Loading() {
       </div>
 
       {/* Özet kartları */}
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
           <div key={i} className="card flex items-start justify-between gap-3 p-4">
             <div className="min-w-0 flex-1 space-y-3">

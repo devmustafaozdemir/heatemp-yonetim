@@ -23,6 +23,23 @@ export const CHART = {
   axis: "#878a99",
 } as const;
 
+/**
+ * Anlama göre sabit seri renkleri: aynı kavram her grafikte aynı renkle çizilir.
+ */
+export const SERIES = {
+  revenue: CHART.blue, // ciro
+  profit: CHART.teal, // brüt kâr
+  cost: CHART.amber, // maliyet (FIFO, üretim)
+  quantity: CHART.violet, // adet
+  heatemp: CHART.brand, // Heatemp rafı
+  mekonsis: CHART.teal, // Mekonsis rafı
+  material: CHART.sky, // hammadde
+  wip: CHART.violet, // üretimdeki parti
+  opening: CHART.slate, // açılış stoğu
+  unitCost: CHART.brand, // parti birim maliyeti
+  other: CHART.slate,
+} as const;
+
 export const AXIS_TICK = { fill: CHART.axis, fontSize: 11 } as const;
 export const GRID_PROPS = { stroke: CHART.grid, vertical: false } as const;
 
@@ -58,6 +75,29 @@ export function ChartFrame({
         {children as React.ReactElement}
       </ResponsiveContainer>
     </div>
+  );
+}
+
+/**
+ * Grafik lejantı — her grafikte aynı yer ve biçim: grafiğin ÜSTÜNDE, sola hizalı.
+ * shape: "dot" (sütun/alan), "line" (çizgi), "dash" (hedef/referans çizgisi).
+ */
+export function ChartLegend({ items }: { items: { label: ReactNode; color: string; shape?: "dot" | "line" | "dash" }[] }) {
+  return (
+    <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
+      {items.map((it, i) => (
+        <li key={i} className="flex items-center gap-1.5">
+          {it.shape === "line" ? (
+            <span className="h-0.5 w-3.5 rounded" style={{ background: it.color }} aria-hidden />
+          ) : it.shape === "dash" ? (
+            <span className="w-3.5 border-t-2 border-dashed" style={{ borderColor: it.color }} aria-hidden />
+          ) : (
+            <span className="size-2.5 rounded-full" style={{ background: it.color }} aria-hidden />
+          )}
+          {it.label}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -183,7 +223,7 @@ export function DonutChart({
           {data.map((d) => (
             <li key={d.name} className="flex items-start justify-between gap-3 text-[13px]">
               <span className="flex min-w-0 items-start gap-2">
-                <span className="mt-1 size-2.5 shrink-0 rounded-sm" style={{ background: d.color }} aria-hidden />
+                <span className="mt-1 size-2.5 shrink-0 rounded-full" style={{ background: d.color }} aria-hidden />
                 <span className="min-w-0">
                   <span className="block font-medium text-ink">{d.name}</span>
                   {d.hint ? <span className="block text-xs text-ink-muted">{d.hint}</span> : null}

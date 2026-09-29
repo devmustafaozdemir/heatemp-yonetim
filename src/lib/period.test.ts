@@ -37,3 +37,14 @@ describe("biçim", () => {
     expect(fmtCompactMoney(1250000, "TRY")).toBe("₺1,3 mn");
   });
 });
+
+describe("grafik yardımcıları", () => {
+  it("güzel eksen adımları", async () => {
+    const { niceTicks, fmtPercent, fmtDayShort } = await import("./format");
+    expect(niceTicks(340).ticks).toEqual([0, 100, 200, 300, 400]);
+    expect(niceTicks(4.8, 4, 4).ticks[0]).toBe(4);
+    expect(fmtPercent(72.345)).toBe("%72,3");
+    expect(fmtPercent(90)).toBe("%90,0");
+    expect(fmtDayShort("2026-09-29")).toBe("29.09");
+  });
+});

@@ -314,7 +314,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
 
       {/* 1) Satış sonuçları — seçilen dönem */}
       <SectionTitle scope={period.label}>Satış sonuçları</SectionTitle>
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {salesCard(
           "Ciro",
           Banknote,

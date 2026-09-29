@@ -42,8 +42,8 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Ürünler ve BOM", icon: Package, href: "/urunler" },
       { label: "Hammadde", icon: Boxes, href: "/hammadde" },
-      { label: "Üretim Simülasyonu", icon: Calculator, href: "/simulasyon" },
-      { label: "Üretim Partileri", icon: Factory, href: "/uretim" },
+      { label: "Üretim simülasyonu", icon: Calculator, href: "/simulasyon" },
+      { label: "Üretim partileri", icon: Factory, href: "/uretim" },
     ],
   },
   {
@@ -66,7 +66,7 @@ export const NAV: NavGroup[] = [
           { href: "/satislar/yeni", label: "Yeni satış", adminOnly: true },
         ],
       },
-      { label: "Kurumsal Müşteriler", icon: Building2, href: "/musteriler" },
+      { label: "Kurumsal müşteriler", icon: Building2, href: "/musteriler" },
     ],
   },
   {

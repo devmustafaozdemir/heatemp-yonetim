@@ -2,19 +2,7 @@
 
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  cloneElement,
-  createContext,
-  isValidElement,
-  use,
-  useId,
-  useRef,
-  useState,
-  useTransition,
-  type ComponentProps,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { createContext, use, useEffect, useId, useRef, useState, useTransition, type ComponentProps, type ReactNode } from "react";
 import { notifySuccess } from "@/components/Toaster";
 import { Alert, Button, cx, RequiredMark, type ButtonVariant } from "@/components/ui";
 import { useDialog } from "@/components/ui/dialog";
@@ -148,24 +136,27 @@ export function FormField({
 }) {
   const error = useFieldError(name);
   const descId = `${useId()}-aciklama`;
-  const described = error || hint ? descId : undefined;
-  // Tek bir yerel girdi öğesiyse ipucu/hata aria-describedby ile bağlanır (erişilebilir ada karışmaz).
-  const control =
-    isValidElement(children) && typeof children.type === "string"
-      ? cloneElement(children as ReactElement<Record<string, unknown>>, {
-          "aria-describedby": described,
-          "aria-invalid": error ? true : undefined,
-          "aria-required": required || undefined,
-        })
-      : children;
+  const described = error || hint ? descId : null;
+  const labelRef = useRef<HTMLLabelElement>(null);
+  // İpucu/hata girdiye aria-describedby ile bağlanır. Öznitelikler hidrasyondan sonra DOM'a yazılır:
+  // sunucudan gelen çocuk öğeyi klonlamak sunucu/istemci farkına (hidrasyon uyuşmazlığı) yol açıyordu.
+  useEffect(() => {
+    const el = labelRef.current?.querySelector<HTMLElement>("input, select, textarea");
+    if (!el) return;
+    if (described) el.setAttribute("aria-describedby", described);
+    else el.removeAttribute("aria-describedby");
+    if (error) el.setAttribute("aria-invalid", "true");
+    else el.removeAttribute("aria-invalid");
+    if (required) el.setAttribute("aria-required", "true");
+  }, [described, error, required]);
   return (
     <div className={cx("block min-w-0", className)} data-invalid={error ? "" : undefined}>
-      <label className="block">
+      <label ref={labelRef} className="block">
         <span className="label">
           {label}
           {required ? <RequiredMark /> : null}
         </span>
-        {control}
+        {children}
       </label>
       {error ? (
         <span id={descId} className="field-error" role="alert">
@@ -179,6 +170,11 @@ export function FormField({
       ) : null}
     </div>
   );
+}
+
+/** Form işlem çubuğu: yan panel/modal içinde altta yapışık, sayfada sağa hizalı. */
+export function FormActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx("form-actions", className)}>{children}</div>;
 }
 
 export function SubmitButton({

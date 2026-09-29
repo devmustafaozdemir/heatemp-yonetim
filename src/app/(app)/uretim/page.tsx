@@ -197,7 +197,7 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
       />
 
       {/* Her kart kendi kaynağının hatasını gösterir: biri hata verirse diğerleri yine görünür. */}
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {summary ? (
           <StatCard
             label="Üretimde"

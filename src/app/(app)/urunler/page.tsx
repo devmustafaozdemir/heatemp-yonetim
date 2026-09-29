@@ -146,7 +146,9 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const sum = (rows: StatRow[], k: keyof StatRow) => rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
   const variantTotal = sum(all, "variant_count");
   const activeVariants = sum(active, "active_variant_count");
+  // "none" (hiç stok girişi yok) ayrımı v_product_list'e eklenene kadar 0; bkz. StockStatus.displayStockStatus.
   const counts = {
+    none: 0,
     critical: sum(active, "critical_variant_count"),
     low: sum(active, "low_variant_count"),
     below_target: sum(active, "below_target_variant_count"),

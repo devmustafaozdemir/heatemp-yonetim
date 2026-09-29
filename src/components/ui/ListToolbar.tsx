@@ -136,27 +136,31 @@ export function ListToolbar({
         </div>
       ) : null}
       {dateRange ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <CalendarRange className="size-4 text-ink-muted" aria-hidden />
-          <span className="text-xs text-ink-muted">{dateRange.label ?? "Tarih"}</span>
+        <fieldset className="grid w-full min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-x-1.5 gap-y-1 sm:flex sm:w-auto sm:flex-wrap">
+          <legend className="col-span-3 mb-1 flex items-center gap-1.5 text-xs text-ink-muted sm:float-left sm:mr-1 sm:mb-0">
+            <CalendarRange className="size-4" aria-hidden />
+            {dateRange.label ?? "Tarih"}
+          </legend>
           <input
             type="date"
             value={values[fromKey] ?? ""}
             max={values[toKey] || undefined}
             onChange={(e) => go({ [fromKey]: e.target.value || null })}
-            className="input input-sm w-[9.5rem]"
+            className="input input-sm w-full min-w-0 sm:w-[9.5rem]"
             aria-label={`${dateRange.label ?? "Tarih"} başlangıç`}
           />
-          <span className="text-xs text-ink-muted">–</span>
+          <span className="text-xs text-ink-muted" aria-hidden>
+            –
+          </span>
           <input
             type="date"
             value={values[toKey] ?? ""}
             min={values[fromKey] || undefined}
             onChange={(e) => go({ [toKey]: e.target.value || null })}
-            className="input input-sm w-[9.5rem]"
+            className="input input-sm w-full min-w-0 sm:w-[9.5rem]"
             aria-label={`${dateRange.label ?? "Tarih"} bitiş`}
           />
-        </div>
+        </fieldset>
       ) : null}
       {sortOptions?.length ? (
         <label className="flex min-w-0 items-center gap-1.5">

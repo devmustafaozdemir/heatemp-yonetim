@@ -375,8 +375,8 @@ export function buttonClass(variant: ButtonVariant = "primary", size: "sm" | "md
     primary: "bg-brand-600 text-white shadow-sm hover:bg-brand-700",
     secondary: "border border-line-strong bg-white text-ink-soft shadow-sm hover:bg-canvas",
     soft: "bg-brand-50 text-brand-700 hover:bg-brand-100",
-    success: "bg-chart-teal text-white shadow-sm hover:bg-chart-teal/90",
-    danger: "bg-chart-red text-white shadow-sm hover:bg-chart-red/90",
+    success: "bg-success-ink text-white shadow-sm hover:bg-success-ink/90",
+    danger: "bg-danger-ink text-white shadow-sm hover:bg-danger-ink/90",
     ghost: "text-ink-soft hover:bg-canvas",
     outline: "border border-brand-300 bg-white text-brand-700 hover:bg-brand-50",
   };
