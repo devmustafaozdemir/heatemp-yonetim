@@ -28,16 +28,16 @@ export async function recordSale(formData: FormData) {
     raw.forEach((r, i) => {
       const quantity = parseInteger(String(r.quantity ?? ""));
       const unitPrice = parseDecimal(String(r.unit_price ?? ""));
-      if (!isUuid(String(r.variant_id ?? ""))) form.errors[`items.${i}`] = `${i + 1}. satır: varyant seçin.`;
+      if (!isUuid(String(r.variant_id ?? ""))) form.errors[`items.${i}`] = `${i + 1}. kalem: varyant seçin.`;
       else if (quantity === null || Number.isNaN(quantity) || quantity <= 0)
-        form.errors[`items.${i}`] = `${i + 1}. satır: adet sıfırdan büyük tam sayı olmalıdır.`;
+        form.errors[`items.${i}`] = `${i + 1}. kalem: adet sıfırdan büyük tam sayı olmalıdır.`;
       else if (unitPrice === null || Number.isNaN(unitPrice) || unitPrice <= 0)
-        form.errors[`items.${i}`] = `${i + 1}. satır: birim satış fiyatı sıfırdan büyük olmalıdır.`;
+        form.errors[`items.${i}`] = `${i + 1}. kalem: birim satış fiyatı sıfırdan büyük olmalıdır.`;
       else items.push({ variant_id: String(r.variant_id), quantity, unit_price: unitPrice });
     });
     if (raw.length === 0) form.errors.items = "En az bir satış kalemi ekleyin.";
     if (new Set(items.map((i) => i.variant_id)).size !== items.length) {
-      form.errors.items = "Aynı varyant birden fazla satırda olamaz; adetleri birleştirin.";
+      form.errors.items = "Aynı varyant birden fazla kalemde olamaz; adetleri birleştirin.";
     }
     form.assertValid();
 

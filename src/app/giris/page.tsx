@@ -1,6 +1,8 @@
+import { ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
+import { AuthLayout } from "./AuthLayout";
 import { LoginForm } from "./LoginForm";
 
 export const metadata: Metadata = { title: "Giriş" };
@@ -10,15 +12,18 @@ export default async function LoginPage() {
   if (ctx?.role) redirect("/");
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <AuthLayout>
+      <div className="card px-5 py-6 sm:px-8 sm:py-8">
         <div className="mb-6">
-          <div className="text-xs font-semibold tracking-widest text-brand-600 uppercase">Heatemp</div>
-          <h1 className="mt-1 text-lg font-semibold text-slate-900">Üretim, stok ve satış yönetimi</h1>
-          <p className="mt-1 text-sm text-slate-500">Devam etmek için giriş yapın.</p>
+          <h1 className="text-xl font-semibold text-ink">Giriş yap</h1>
+          <p className="mt-1 text-[13px] text-ink-muted">Heatemp yönetim paneline devam etmek için hesabınızla oturum açın.</p>
         </div>
         <LoginForm />
+        <p className="mt-6 flex items-start gap-2 border-t border-line pt-4 text-xs text-ink-muted">
+          <ShieldCheck className="mt-px size-4 shrink-0 text-ink-muted" aria-hidden />
+          <span>Hesaplar yönetici tarafından açılır; şifre sıfırlama için yöneticinize başvurun.</span>
+        </p>
       </div>
-    </main>
+    </AuthLayout>
   );
 }

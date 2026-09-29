@@ -3,10 +3,11 @@ import Link from "next/link";
 import { CostChange } from "@/components/status";
 import { STOCK_STATUS, StockStatusBadge } from "@/components/StockStatus";
 import { Alert, Badge, Card, cx, EmptyState, ErrorState, TableWrap } from "@/components/ui";
-import { Pagination, SortTh } from "@/components/ui/list";
+import { SortTh } from "@/components/ui/list";
 import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import type { ListParams } from "@/lib/list-params";
 import type { VariantOverview } from "@/lib/types";
+import { StockPagination } from "./StockPagination";
 import { StockTableToolbar } from "./StockTableToolbar";
 
 export interface OpeningInfo {
@@ -14,15 +15,14 @@ export interface OpeningInfo {
   qty: number;
   value_try: number;
   span: { min: string; max: string } | null;
+  /** Stok tarihleri okunamadıysa hata metni (tarih yerine açıkça yazılır) */
+  spanError: string | null;
 }
 
 const STATUS_OPTIONS = [
   { value: "risk", label: "Kritik veya minimum altı" },
   ...(Object.entries(STOCK_STATUS) as [keyof typeof STOCK_STATUS, (typeof STOCK_STATUS)[keyof typeof STOCK_STATUS]][]).map(
-    ([value, s]) => ({
-      value,
-      label: s.label,
-    }),
+    ([value, s]) => ({ value, label: s.label }),
   ),
 ];
 
@@ -94,13 +94,16 @@ export function StockTable({
           <Alert tone="info" title="Veri kapsamı: açılış stoğu">
             {fmtInt(opening.variants)} varyantın stoğu ({fmtInt(opening.qty)} adet, {fmtMoney(opening.value_try, "TRY")} maliyet değeri)
             sistem öncesinden açılış stoğu olarak aktarıldı
-            {opening.span
-              ? opening.span.min === opening.span.max
-                ? ` (stok tarihi ${fmtDate(opening.span.min)})`
-                : ` (stok tarihleri ${fmtDate(opening.span.min)} – ${fmtDate(opening.span.max)})`
-              : ""}
+            {opening.spanError
+              ? " (stok tarihi yüklenemedi)"
+              : opening.span
+                ? opening.span.min === opening.span.max
+                  ? ` (stok tarihi ${fmtDate(opening.span.min)})`
+                  : ` (stok tarihleri ${fmtDate(opening.span.min)} – ${fmtDate(opening.span.max)})`
+                : ""}
             . Bu stokların sistem öncesi üretim ve hareket geçmişi kayıtlı değildir; açılış adetleri “Üretilen” miktarına dahil edilmez,
             “Açılış” olarak ayrıca gösterilir.
+            {opening.spanError ? <span className="mt-1 block text-xs">Stok tarihi sorgusu başarısız oldu: {opening.spanError}</span> : null}
           </Alert>
         </div>
       ) : null}
@@ -133,10 +136,7 @@ export function StockTable({
           ) : (
             <>
               {/* Mobil ve tablet: kart listesi (tablo yatay kaydırma gerektirmeden okunur); kart genişliği yeterliyse tablo (kapsayıcı sorgusu) */}
-              <ul
-                className="grid gap-3 p-3 @min-[560px]:grid-cols-2 @min-[860px]:grid-cols-3 @min-[1024px]:hidden"
-                aria-label="Ürün durumu listesi"
-              >
+              <ul className="grid gap-3 p-3 @min-[560px]:grid-cols-2 @min-[900px]:hidden" aria-label="Ürün durumu listesi">
                 {pageRows.map((r) => (
                   <li key={r.variant_id} className="min-w-0 rounded-md border border-line p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -172,24 +172,25 @@ export function StockTable({
                       ))}
                     </dl>
                     <p className="mt-1.5 text-xs text-ink-muted tabular-nums">
-                      {r.opening_qty > 0 ? `Açılış ${fmtInt(r.opening_qty)} · ` : ""}Üretilen {fmtInt(r.produced_qty)}
+                      {r.opening_qty > 0 ? `Açılış ${fmtInt(r.opening_qty)} · ` : ""}
+                      Üretilen {fmtInt(r.produced_qty)}
                       {r.in_production_qty > 0 ? ` (+${fmtInt(r.in_production_qty)} üretimde)` : ""} · Satılan {fmtInt(r.sold_qty)}
                       {r.last_batch_no ? ` · birim ${fmtUnitMoney(r.last_unit_cost_usd, "USD")}` : ""}
                     </p>
                   </li>
                 ))}
                 <li className="rounded-md bg-canvas px-3 py-2.5 text-xs text-ink-soft tabular-nums @min-[560px]:col-span-full">
-                  <span className="font-semibold text-ink">Toplam</span> ({fmtInt(rows.length)} varyant): Heatemp{" "}
-                  {fmtInt(sum("heatemp_qty"))} · Mekonsis {fmtInt(sum("mekonsis_qty"))} · kalan {fmtInt(sum("total_remaining"))} · satılan{" "}
-                  {fmtInt(sum("sold_qty"))}
+                  <span className="font-semibold text-ink">Toplam</span> ({fmtInt(rows.length)} varyant
+                  {filtered ? ", filtreye göre" : ""}): açılış {fmtInt(sum("opening_qty"))} · üretilen {fmtInt(sum("produced_qty"))} ·
+                  Heatemp {fmtInt(sum("heatemp_qty"))} · Mekonsis {fmtInt(sum("mekonsis_qty"))} · satılan {fmtInt(sum("sold_qty"))} · kalan{" "}
+                  {fmtInt(sum("total_remaining"))}
                 </li>
               </ul>
-              <TableWrap className="hidden @min-[1024px]:block">
+              <TableWrap className="hidden @min-[900px]:block">
                 <table className="table-base table-compact">
                   <thead>
                     <tr>
-                      <SortTh label="Ürün" column="product_name" {...th} />
-                      <th>Varyant / kod</th>
+                      <SortTh label="Ürün / varyant" column="product_name" {...th} />
                       <SortTh
                         label="Açılış"
                         column="opening_qty"
@@ -210,7 +211,7 @@ export function StockTable({
                       <SortTh label="Kalan" column="total_remaining" align="right" title="Toplam kalan: Heatemp + Mekonsis rafı" {...th} />
                       <th>Durum</th>
                       <th
-                        className="num hidden @min-[1136px]:table-cell"
+                        className="num hidden @min-[1040px]:table-cell"
                         title="Son tamamlanmış üretim partisinin birim maliyeti (USD / TL)"
                       >
                         Birim maliyet
@@ -220,7 +221,7 @@ export function StockTable({
                   <tbody>
                     {pageRows.map((r) => (
                       <tr key={r.variant_id}>
-                        <td className="min-w-44">
+                        <td className="min-w-52">
                           <Link href={`/urunler/${r.product_id}`} className="link">
                             {r.product_name}
                           </Link>
@@ -229,17 +230,19 @@ export function StockTable({
                               <Badge tone="gray">Pasif</Badge>
                             </span>
                           ) : null}
+                          <div className="text-xs text-ink-muted">
+                            <Link
+                              href={`/urunler/${r.product_id}/varyant/${r.variant_id}`}
+                              className="font-medium text-ink-soft hover:text-brand-600 hover:underline"
+                            >
+                              {r.variant_name}
+                            </Link>{" "}
+                            · <span className="font-mono whitespace-nowrap">{r.variant_code}</span>
+                          </div>
                         </td>
-                        <td>
-                          <Link
-                            href={`/urunler/${r.product_id}/varyant/${r.variant_id}`}
-                            className="font-medium text-ink hover:text-brand-600 hover:underline"
-                          >
-                            {r.variant_name}
-                          </Link>
-                          <div className="code text-ink-muted">{r.variant_code}</div>
+                        <td className="num">
+                          <Qty v={r.opening_qty} />
                         </td>
-                        <td className="num">{r.opening_qty > 0 ? <Qty v={r.opening_qty} /> : <span className="text-ink-muted">—</span>}</td>
                         <td className="num">
                           <Qty v={r.produced_qty} />
                           {r.in_production_qty > 0 ? (
@@ -261,7 +264,7 @@ export function StockTable({
                         <td>
                           <StockStatusBadge row={r} />
                         </td>
-                        <td className="num hidden @min-[1136px]:table-cell">
+                        <td className="num hidden @min-[1040px]:table-cell">
                           {r.last_batch_no ? (
                             <>
                               <span className="text-ink">{fmtUnitMoney(r.last_unit_cost_usd, "USD")}</span>
@@ -284,10 +287,11 @@ export function StockTable({
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan={2}>
+                      <td>
                         Toplam{" "}
                         <span className="font-normal text-ink-muted">
-                          · {fmtInt(rows.length)} varyant{filtered ? " (filtreye göre)" : ""}
+                          · {fmtInt(rows.length)} varyant
+                          {filtered ? " (filtreye göre)" : ""}
                         </span>
                       </td>
                       <td className="num">{fmtInt(sum("opening_qty"))}</td>
@@ -297,7 +301,7 @@ export function StockTable({
                       <td className="num">{fmtInt(sum("sold_qty"))}</td>
                       <td className="num">{fmtInt(sum("total_remaining"))}</td>
                       <td />
-                      <td className="hidden @min-[1136px]:table-cell" />
+                      <td className="hidden @min-[1040px]:table-cell" />
                     </tr>
                   </tfoot>
                 </table>
@@ -305,7 +309,7 @@ export function StockTable({
             </>
           )}
           {rows.length > 0 ? (
-            <Pagination basePath="/" values={values} page={lp.page} pageSize={lp.pageSize} total={rows.length} noun="varyant" />
+            <StockPagination values={values} page={lp.page} pageSize={lp.pageSize} total={rows.length} noun="varyant" hash="urun-durumu" />
           ) : null}
         </div>
       )}

@@ -51,7 +51,12 @@ interface GroupSource {
   layer: ShelfLayer;
 }
 
-/** Katmanları varyant bazında gruplar; varyantlar ada, katmanlar FIFO sırasına (tarih) göre dizilir. */
+/**
+ * Katmanları varyant bazında gruplar; varyantlar ada, katmanlar FIFO sırasına göre dizilir.
+ * Veritabanı FIFO'su rafa giriş tarihi, sonra katman kayıt sırasıdır (fifo_seq). Sorgu bu sırayla
+ * gelir (Heatemp: received_on, completed_at; Mekonsis: delivered_on, received_at); burada yalnız
+ * tarihe göre dizilir — Array.sort kararlı olduğundan aynı gündeki katmanların sorgu sırası korunur.
+ */
 export function groupLayers(rows: GroupSource[]): ShelfGroup[] {
   const map = new Map<string, ShelfGroup>();
   for (const r of rows) {
@@ -85,7 +90,7 @@ export function groupLayers(rows: GroupSource[]): ShelfGroup[] {
     if (l.date < g.oldest) g.oldest = l.date;
   }
   const groups = Array.from(map.values());
-  for (const g of groups) g.layers.sort((a, b) => a.date.localeCompare(b.date) || a.batch_no.localeCompare(b.batch_no));
+  for (const g of groups) g.layers.sort((a, b) => a.date.localeCompare(b.date));
   return groups.sort((a, b) => a.display_name.localeCompare(b.display_name, "tr"));
 }
 

@@ -24,6 +24,7 @@ export function TopProductsChart({ rows, periodLabel, salesHref }: { rows: Produ
   const top = sorted.slice(0, TOP);
   const rest = sorted.slice(TOP);
   const total = sorted.reduce((a, r) => a + value(r), 0);
+  const restValue = rest.reduce((a, r) => a + value(r), 0);
   const data = top.map((r) => ({ ...r, value: value(r) }));
   const color = money ? CHART.blue : CHART.violet;
   const fmt = (v: number) => (money ? fmtMoney(v, "TRY") : `${fmtInt(v)} adet`);
@@ -51,11 +52,11 @@ export function TopProductsChart({ rows, periodLabel, salesHref }: { rows: Produ
       footer={
         sorted.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Dönem toplamı özet kartında (v_sales_daily) gösterilir; burada tekrar edilmez (kuruş yuvarlaması farkı olmasın). */}
             <span>
               {rest.length > 0
-                ? `İlk ${TOP} ürün gösteriliyor; diğer ${fmtInt(rest.length)} ürün: ${fmt(rest.reduce((a, r) => a + value(r), 0))}.`
-                : `${fmtInt(sorted.length)} ürün satıldı.`}{" "}
-              Toplam {fmt(total)}.
+                ? `İlk ${TOP} ürün gösteriliyor; diğer ${fmtInt(rest.length)} ürün: ${fmt(restValue)} (${fmtPct(total > 0 ? (restValue / total) * 100 : null)}).`
+                : `Dönemde satılan ${fmtInt(sorted.length)} ürünün tamamı gösteriliyor.`}
             </span>
             <Link href={salesHref} className="link">
               Dönemin satışları
@@ -75,7 +76,7 @@ export function TopProductsChart({ rows, periodLabel, salesHref }: { rows: Produ
             <XAxis type="number" hide domain={[0, "dataMax"]} />
             <YAxis type="category" dataKey="product_name" hide width={0} />
             <Tooltip
-              cursor={{ fill: "rgba(64,81,137,0.05)" }}
+              cursor={{ fill: CHART.brand, fillOpacity: 0.05 }}
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
                 const p = payload[0].payload as (typeof data)[number];
@@ -102,18 +103,36 @@ export function TopProductsChart({ rows, periodLabel, salesHref }: { rows: Produ
                 content={(props) => {
                   const { x, y, value } = props as { x?: number | string; y?: number | string; value?: unknown };
                   return (
-                    <text x={Number(x)} y={Number(y) - 6} fill="#495057" fontSize={12} fontWeight={500}>
+                    <text x={Number(x)} y={Number(y) - 6} className="fill-ink-soft" fontSize={12} fontWeight={500}>
                       {String(value ?? "")}
                     </text>
                   );
                 }}
               />
+              {/* Değer çubuğun ucunda */}
               <LabelList
                 dataKey="value"
-                position="right"
-                offset={6}
-                formatter={(v: unknown) => fmtShort(Number(v))}
-                style={{ fill: "#495057", fontSize: 11.5, fontWeight: 600 }}
+                content={(props) => {
+                  const { x, y, width, height, value } = props as {
+                    x?: number | string;
+                    y?: number | string;
+                    width?: number | string;
+                    height?: number | string;
+                    value?: unknown;
+                  };
+                  return (
+                    <text
+                      x={Number(x) + Number(width) + 6}
+                      y={Number(y) + Number(height) / 2}
+                      dominantBaseline="central"
+                      className="fill-ink-soft tabular-nums"
+                      fontSize={11.5}
+                      fontWeight={600}
+                    >
+                      {fmtShort(Number(value))}
+                    </text>
+                  );
+                }}
               />
             </Bar>
           </BarChart>

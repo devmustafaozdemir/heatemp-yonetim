@@ -15,28 +15,51 @@ import {
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/forms";
-import { Badge, Card, EmptyState, ErrorState, IconBox, PageHeader, StatCard, TableWrap } from "@/components/ui";
+import { Badge, ButtonLink, Card, EmptyState, ErrorState, IconBox, PageHeader, StatCard, TableWrap } from "@/components/ui";
 import { Drawer } from "@/components/ui/dialog";
 import { ListToolbar } from "@/components/ui/ListToolbar";
-import { Pagination, SortTh } from "@/components/ui/list";
-import { requireMember } from "@/lib/auth";
+import { LinkSegmented, Pagination, SortTh } from "@/components/ui/list";
+import { getAuthContext, requireMember } from "@/lib/auth";
 import { fmtDate, fmtDateTime, fmtInt, fmtMoney, fmtNum, fmtQty, fmtRate, fmtUnitMoney, todayTr } from "@/lib/format";
-import { isoDateOrNull, parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
+import { hrefWith, isoDateOrNull, parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { addDays, buckets } from "@/lib/period";
 import { load, must } from "@/lib/query";
 import type { MaterialMovement, Unit, UnitKind } from "@/lib/types";
 import { updateMaterial } from "../actions";
-import { KindBadge, MOVEMENT_META, MOVEMENT_ORDER, MaterialStateBadge, MovementBadge, movementTypeFromKey } from "../_components/bits";
+import {
+  KindBadge,
+  MOVEMENT_META,
+  MOVEMENT_ORDER,
+  MaterialStateBadge,
+  MovementBadge,
+  movementTypeFromKey,
+} from "../_components/bits";
+import { lastPageOf, loadPage } from "../_components/paging";
 import { StockFlowChart, type StockFlowPoint } from "../_components/StockFlowChart";
 import { toOption, type MaterialListRow, type MonthlyFlowRow } from "../_components/types";
 import { WriteOffForm } from "../_components/WriteOffForm";
 import { MaterialFields } from "../MaterialForm";
 import { ReceiveForm } from "../ReceiveForm";
 
-export const metadata: Metadata = { title: "Malzeme" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const ctx = await getAuthContext();
+  if (!ctx || !isUuid(id)) return { title: "Malzeme" };
+  const { data } = await ctx.supabase.from("raw_materials").select("name, code").eq("id", id).maybeSingle<{ name: string; code: string }>();
+  return { title: data ? `${data.name} (${data.code})` : "Malzeme" };
+}
+
+/** 1280–1400 px arasında Tutar ve Kur sütunları Birim fiyat hücresine katlanır (tablo yatay kaymasın). */
+const WIDE_CELL = "hidden min-[1400px]:table-cell";
+const NARROW_ONLY = "min-[1400px]:hidden";
+const MOBILE_SORTS = [
+  { key: "movement_date", label: "Tarih", dir: "desc" },
+  { key: "qty", label: "Miktar", dir: "desc" },
+  { key: "value_try", label: "Değer", dir: "desc" },
+] as const;
 
 const UNIT_KIND_LABEL: Record<UnitKind, string> = {
   count: "Adet",
@@ -77,20 +100,23 @@ export default async function MaterialPage({
   if (!material) notFound();
 
   // Hareket geçmişi: sunucu tarafı filtre, sıralama ve sayfalama
-  let mq = ctx.supabase.from("material_movements").select("*", { count: "exact" }).eq("material_id", id);
   const type = movementTypeFromKey(values.tur);
-  if (type) mq = mq.eq("movement_type", type);
   const from = isoDateOrNull(values.bas);
   const to = isoDateOrNull(values.bit);
-  if (from) mq = mq.gte("movement_date", from);
-  if (to) mq = mq.lte("movement_date", to);
   const pattern = searchPattern(lp.q);
-  if (pattern) mq = mq.or(`supplier.ilike.${pattern},note.ilike.${pattern}`);
+  const movementQuery = (columns: string, head = false) => {
+    let mq = ctx.supabase.from("material_movements").select(columns, { count: "exact", head }).eq("material_id", id);
+    if (type) mq = mq.eq("movement_type", type);
+    if (from) mq = mq.gte("movement_date", from);
+    if (to) mq = mq.lte("movement_date", to);
+    if (pattern) mq = mq.or(`supplier.ilike.${pattern},note.ilike.${pattern}`);
+    return mq;
+  };
 
   const [units, movements, lastPurchase, flows, bom] = await Promise.all([
     must(ctx.supabase.from("units").select("*").eq("kind", material.unit_kind).order("sort_order").returns<Unit[]>(), "Birimler"),
-    load(
-      mq
+    loadPage(
+      movementQuery("*")
         .order(lp.sort ?? "movement_date", { ascending: lp.dir === "asc" })
         .order("id", { ascending: lp.dir === "asc" })
         .range(lp.from, lp.to)
@@ -117,6 +143,15 @@ export default async function MaterialPage({
     ),
   ]);
 
+  // Eski / paylaşılmış bağlantıda sayfa numarası hareket sayısını aşıyorsa son geçerli sayfaya git.
+  if (movements.outOfRange) {
+    const c = await load(movementQuery("id", true));
+    if (!c.error && c.count !== null) {
+      const lastPage = lastPageOf(c.count, lp.pageSize);
+      redirect(hrefWith(base, values, { sayfa: lastPage > 1 ? lastPage : null }));
+    }
+  }
+
   const movementRows = movements.data ?? [];
   const bomRows = bom.data ?? [];
   const batchIds = [...new Set(movementRows.map((m) => m.batch_id).filter(Boolean))] as string[];
@@ -141,6 +176,8 @@ export default async function MaterialPage({
   ]);
   const variantInfo = new Map((variants.data ?? []).map((v) => [v.id, v]));
   const batchNo = new Map((batches.data ?? []).map((b) => [b.id, b.batch_no]));
+  // Parti numaraları yüklenemezse bağlantı kısa kimlikle gösterilir (tabloda ayrıca not düşülür).
+  const batchLabel = (batchId: string) => batchNo.get(batchId) ?? `Parti ${batchId.slice(0, 8)}`;
 
   const f = Number(material.display_factor);
   const option = toOption(material);
@@ -203,6 +240,21 @@ export default async function MaterialPage({
         actions={
           isAdmin ? (
             <>
+              {/* Geniş ekranda stok girişi formu sayfada; daha dar ekranlarda bu pencereden açılır. */}
+              <Drawer
+                trigger={
+                  <>
+                    <ArrowDownToLine aria-hidden />
+                    Stok girişi
+                  </>
+                }
+                triggerClassName="xl:hidden"
+                title="Stok girişi (alış)"
+                description={`${material.name} · her alış kendi günündeki kurla sabitlenir.`}
+                size="lg"
+              >
+                <ReceiveForm material={option} units={units} today={today} />
+              </Drawer>
               <Drawer
                 trigger={
                   <>
@@ -245,15 +297,14 @@ export default async function MaterialPage({
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Mevcut miktar"
-          scope="Güncel stok"
           value={fmtNum(material.qty_display, 3)}
           unit={unit}
           icon={Boxes}
           tone="brand"
           description={
             unit !== material.base_unit
-              ? `Temel birimde ${fmtNum(material.qty, 3)} ${material.base_unit}`
-              : `Temel birim: ${material.base_unit}`
+              ? `Güncel stok · temel birimde ${fmtNum(material.qty, 3)} ${material.base_unit}`
+              : `Güncel stok · temel birim ${material.base_unit}`
           }
         />
         <StatCard
@@ -270,11 +321,10 @@ export default async function MaterialPage({
         />
         <StatCard
           label="Stok değeri"
-          scope="Güncel stok"
           value={fmtMoney(material.value_try, "TRY")}
           icon={Wallet}
           tone="blue"
-          description={`USD karşılığı ${fmtMoney(material.value_usd, "USD")} · alış kurlarıyla (bilgi)`}
+          description={`Güncel stok · USD karşılığı ${fmtMoney(material.value_usd, "USD")} (alış kurlarıyla, bilgi)`}
         />
         <StatCard
           label="Son alış"
@@ -294,14 +344,17 @@ export default async function MaterialPage({
       <div className="mb-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid min-w-0 gap-4">
           {isAdmin ? (
-            <Card
-              id="stok-girisi"
-              title="Stok girişi (alış)"
-              icon={ArrowDownToLine}
-              description="Her alış ayrı bir maliyet hareketi olarak saklanır ve kendi günündeki kurla sabitlenir."
-            >
-              <ReceiveForm material={option} units={units} today={today} />
-            </Card>
+            // Dar ekranlarda form başlıktaki "Stok girişi" penceresindedir; sayfa kısa kalır.
+            <div className="hidden min-w-0 xl:block">
+              <Card
+                id="stok-girisi"
+                title="Stok girişi (alış)"
+                icon={ArrowDownToLine}
+                description="Her alış ayrı bir maliyet hareketi olarak saklanır ve kendi günündeki kurla sabitlenir."
+              >
+                <ReceiveForm material={option} units={units} today={today} />
+              </Card>
+            </div>
           ) : null}
           <Card title="Stok seyri" icon={History} description={`Son 12 ay · aylık giriş, çıkış ve ay sonu stok (${unit})`}>
             {flows.error ? <ErrorState message={flows.error} compact /> : <StockFlowChart data={flowPoints} unit={unit} />}
@@ -446,13 +499,13 @@ export default async function MaterialPage({
       <Card
         title="Hareket geçmişi"
         icon={History}
-        description="Alış, üretim tüketimi, parti iptali iadesi ve fire kayıtları · en yeni önce"
+        description="Alış, üretim tüketimi, parti iptali iadesi ve fire kayıtları · varsayılan sıralama en yeni önce"
         padded={false}
       >
         <ListToolbar
           basePath={base}
           values={values}
-          total={movements.error ? null : movements.count}
+          total={movements.error || movements.outOfRange ? null : movements.count}
           noun="hareket"
           search={{ placeholder: "Tedarikçi veya not ara…" }}
           filters={[
@@ -464,63 +517,109 @@ export default async function MaterialPage({
           ]}
           dateRange={{ label: "Tarih" }}
         />
+        {batches.error ? (
+          <p role="status" className="border-b border-line bg-chart-amber/10 px-4 py-2 text-xs text-ink-soft">
+            Parti numaraları yüklenemedi ({batches.error}); parti bağlantıları kısa kimlikle gösteriliyor.
+          </p>
+        ) : null}
         {movements.error ? (
           <ErrorState message={movements.error} />
+        ) : movements.outOfRange ? (
+          <EmptyState
+            title="Bu sayfada hareket yok"
+            icon={History}
+            action={
+              <ButtonLink href={hrefWith(base, values, { sayfa: null })} variant="secondary" size="sm">
+                İlk sayfaya dön
+              </ButtonLink>
+            }
+          >
+            Sayfa numarası hareket sayısını aşıyor.
+          </EmptyState>
         ) : movementRows.length === 0 ? (
-          <EmptyState title={movementFiltered ? "Filtrelere uyan hareket yok" : "Henüz hareket yok"} icon={History}>
+          <EmptyState
+            title={movementFiltered ? "Filtrelere uyan hareket yok" : "Henüz hareket yok"}
+            icon={History}
+            action={
+              movementFiltered ? (
+                <ButtonLink href={base} variant="secondary" size="sm">
+                  Filtreleri temizle
+                </ButtonLink>
+              ) : null
+            }
+          >
             {movementFiltered
               ? "Filtreleri değiştirin veya temizleyin."
               : isAdmin
-                ? "İlk alışı “Stok girişi (alış)” formundan kaydedin."
+                ? "İlk alışı “Stok girişi” ile kaydedin."
                 : "Bu malzemede kayıtlı hareket yok."}
           </EmptyState>
         ) : (
           <>
-            <ul className="divide-y divide-line sm:hidden">
-              {movementRows.map((m) => {
-                const q = Number(m.qty);
-                return (
-                  <li key={m.id} className="px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <MovementBadge type={m.movement_type} />
-                        <p className="mt-1 text-xs text-ink-muted">{fmtDate(m.movement_date)}</p>
-                      </div>
-                      <div className="shrink-0 text-right tabular-nums">
-                        <p className="font-semibold text-ink">
+            {/* Mobil ve tablet: kart listesi + sıralama bağlantıları */}
+            <div className="xl:hidden">
+              <div className="flex items-center gap-2 overflow-x-auto border-b border-line px-4 py-2.5 [scrollbar-width:none]">
+                <span className="shrink-0 text-xs text-ink-muted">Sırala</span>
+                <LinkSegmented
+                  active={lp.sort ?? "movement_date"}
+                  items={MOBILE_SORTS.map((o) => ({
+                    key: o.key,
+                    label: o.label,
+                    href: hrefWith(base, values, { sirala: o.key, yon: o.dir, sayfa: null }),
+                  }))}
+                />
+              </div>
+              <ul className="divide-y divide-line">
+                {movementRows.map((m) => {
+                  const q = Number(m.qty);
+                  const purchase = m.movement_type === "purchase" && m.currency;
+                  return (
+                    <li key={m.id} className="px-4 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <MovementBadge type={m.movement_type} />
+                          <span className="text-xs text-ink-muted">{fmtDate(m.movement_date)}</span>
+                        </div>
+                        <p className="shrink-0 font-semibold text-ink tabular-nums">
                           {q > 0 ? "+" : "−"}
                           {fmtNum(Math.abs(q) / f, 3)} {unit}
                         </p>
-                        <p className="text-xs text-ink-soft">
+                      </div>
+                      <div className="mt-1 flex items-baseline justify-between gap-3 text-xs text-ink-muted tabular-nums">
+                        <span className="min-w-0">
+                          Birim maliyet {fmtUnitMoney(Number(m.unit_cost_try) * f, "TRY")} / {unit} (
+                          {fmtUnitMoney(Number(m.unit_cost_usd) * f, "USD")}) · Bakiye {qtyFmt(Number(m.balance_qty_after))}
+                        </span>
+                        <span className="shrink-0 font-medium text-ink-soft">
                           {Number(m.value_try) > 0 ? "+" : ""}
                           {fmtMoney(m.value_try, "TRY")}
-                        </p>
+                        </span>
                       </div>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-ink-muted">
-                      <span className="min-w-0">
-                        {m.movement_type === "purchase" && m.currency ? (
-                          <>
-                            {fmtNum(m.entry_qty, 4)} {m.entry_unit} × {fmtUnitMoney(m.unit_price, m.currency)} · kur {fmtRate(m.fx_rate)}
-                          </>
-                        ) : m.batch_id ? (
-                          <Link className="link" href={`/uretim/${m.batch_id}`}>
-                            {batchNo.get(m.batch_id) ?? "Parti"}
-                          </Link>
-                        ) : (
-                          (m.note ?? "—")
-                        )}
-                      </span>
-                      <span className="tabular-nums">Bakiye {qtyFmt(Number(m.balance_qty_after))}</span>
-                    </div>
-                    {m.supplier || (m.note && (m.movement_type === "purchase" || m.batch_id)) ? (
-                      <p className="mt-0.5 truncate text-xs text-ink-muted">{[m.supplier, m.note].filter(Boolean).join(" · ")}</p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-            <TableWrap className="hidden sm:block">
+                      {purchase ? (
+                        <p className="mt-0.5 text-xs text-ink-muted tabular-nums">
+                          {fmtNum(m.entry_qty, 4)} {m.entry_unit} × {fmtUnitMoney(m.unit_price, m.currency!)} ={" "}
+                          <span className="font-medium text-ink-soft">{fmtMoney(m.total_amount, m.currency!)}</span>
+                          {m.fx_rate ? ` · kur ${fmtRate(m.fx_rate)}` : ""}
+                        </p>
+                      ) : null}
+                      {m.batch_id || m.supplier || m.note ? (
+                        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
+                          {m.batch_id ? (
+                            <Link className="link inline-flex items-center gap-0.5" href={`/uretim/${m.batch_id}`}>
+                              {batchLabel(m.batch_id)}
+                              <ChevronRight className="size-3" aria-hidden />
+                            </Link>
+                          ) : null}
+                          {m.supplier ? <span className="text-ink-soft">{m.supplier}</span> : null}
+                          {m.note ? <span className="min-w-0 break-words">{m.note}</span> : null}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <TableWrap className="hidden xl:block">
               <table className="table-base">
                 <thead>
                   <tr>
@@ -528,8 +627,8 @@ export default async function MaterialPage({
                     <th>Hareket</th>
                     <SortTh label={`Miktar (${unit})`} column="qty" align="right" {...sortProps} />
                     <th className="num">Birim fiyat</th>
-                    <th className="num">Tutar</th>
-                    <th className="num" title="USD/TRY işlem kuru">
+                    <th className={`num ${WIDE_CELL}`}>Tutar</th>
+                    <th className={`num ${WIDE_CELL}`} title="USD/TRY işlem kuru">
                       Kur
                     </th>
                     <th className="num" title="Hareketin birim maliyeti (gösterim birimi başına)">
@@ -567,32 +666,40 @@ export default async function MaterialPage({
                           {purchase && m.currency ? (
                             <>
                               {fmtUnitMoney(m.unit_price, m.currency)} <span className="text-xs text-ink-muted">/ {m.entry_unit}</span>
+                              <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>= {fmtMoney(m.total_amount, m.currency)}</div>
+                              {m.fx_rate ? <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>kur {fmtRate(m.fx_rate)}</div> : null}
                             </>
                           ) : (
                             <span className="text-ink-muted">—</span>
                           )}
                         </td>
-                        <td className="num">
+                        <td className={`num ${WIDE_CELL}`}>
                           {purchase && m.currency ? fmtMoney(m.total_amount, m.currency) : <span className="text-ink-muted">—</span>}
                         </td>
-                        <td className="num">{m.fx_rate ? fmtRate(m.fx_rate) : <span className="text-ink-muted">—</span>}</td>
+                        <td className={`num ${WIDE_CELL}`}>{m.fx_rate ? fmtRate(m.fx_rate) : <span className="text-ink-muted">—</span>}</td>
                         <td className="num">
-                          {fmtUnitMoney(Number(m.unit_cost_try) * f, "TRY")}
-                          <div className="text-xs text-ink-muted">{fmtUnitMoney(Number(m.unit_cost_usd) * f, "USD")}</div>
+                          {fmtUnitMoney(Number(m.unit_cost_try) * f, "TRY")} <span className="text-xs text-ink-muted">/ {unit}</span>
+                          <div className="text-xs text-ink-muted">
+                            {fmtUnitMoney(Number(m.unit_cost_usd) * f, "USD")} / {unit}
+                          </div>
                         </td>
                         <td className="num font-medium text-ink">
                           {Number(m.value_try) > 0 ? "+" : ""}
                           {fmtMoney(m.value_try, "TRY")}
                         </td>
                         <td className="num">{qtyFmt(Number(m.balance_qty_after))}</td>
-                        <td className="max-w-[16rem] text-xs">
+                        <td className="max-w-[11rem] text-xs min-[1400px]:max-w-[16rem]">
                           {m.batch_id ? (
                             <Link className="link inline-flex items-center gap-0.5" href={`/uretim/${m.batch_id}`}>
-                              {batchNo.get(m.batch_id) ?? "Parti"}
+                              {batchLabel(m.batch_id)}
                               <ChevronRight className="size-3" aria-hidden />
                             </Link>
                           ) : null}
-                          {m.supplier ? <div className="truncate text-ink-soft">{m.supplier}</div> : null}
+                          {m.supplier ? (
+                            <div className="truncate text-ink-soft" title={m.supplier}>
+                              {m.supplier}
+                            </div>
+                          ) : null}
                           {m.note ? (
                             <div className="truncate text-ink-muted" title={m.note}>
                               {m.note}

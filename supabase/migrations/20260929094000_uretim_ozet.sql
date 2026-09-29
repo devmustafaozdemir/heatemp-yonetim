@@ -120,7 +120,26 @@ as $$
   order by sum(b.quantity) desc, v.display_name
 $$;
 
+-- Parti listesi: v_batches + liste tarihi. Açılış partisinin "başlama"sı kayıt zamanı
+-- değil, stok (açılış) tarihidir: stock_layers.received_on, Türkiye günü başı olarak.
+-- Listedeki tarih filtresi ve sıralama list_started_at ile yapılır; üretim partilerinde
+-- list_started_at = started_at.
+create or replace view public.v_batch_list with (security_invoker = true) as
+select
+  b.*,
+  case when b.kind = 'opening' then hl.received_on end as opening_date,
+  case when b.kind = 'opening' and hl.received_on is not null
+       then hl.received_on::timestamp at time zone 'Europe/Istanbul'
+       else b.started_at end as list_started_at
+from public.v_batches b
+left join public.stock_layers hl on hl.batch_id = b.id and hl.location = 'heatemp';
+
+comment on view public.v_batch_list is
+  'Parti listesi. opening_date: açılış partisinin stok tarihi; list_started_at: açılışta stok tarihi (Türkiye günü başı), üretimde started_at.';
+
 revoke all on public.v_batch_summary from anon;
 grant select on public.v_batch_summary to authenticated;
+revoke all on public.v_batch_list from anon;
+grant select on public.v_batch_list to authenticated;
 
 do $$ begin perform private.lock_down_public_functions(); end $$;

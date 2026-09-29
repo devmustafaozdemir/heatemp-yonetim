@@ -1,9 +1,10 @@
 import { Boxes, PackageOpen, Store, Warehouse } from "lucide-react";
 import { StockStatusBadge } from "@/components/StockStatus";
-import { Card, ErrorState, MetricRow, ProgressBar, StatCard } from "@/components/ui";
+import { Card, ErrorState, MetricRow } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
 import { fmtInt, fmtMoney } from "@/lib/format";
 import { parseListParams, type SearchParams } from "@/lib/list-params";
+import { StatTile, StockProgress } from "../../../_components/bits";
 import { MOVEMENT_SORTABLE, StockMovementsCard } from "../../../_components/Movements";
 import type { VariantPageData } from "./types";
 
@@ -19,8 +20,8 @@ export async function VariantStockTab({ ctx, data, sp }: { ctx: AuthContext; dat
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            <StatTile
               label="Heatemp rafı"
               scope="Güncel stok"
               value={fmtInt(o.heatemp_qty)}
@@ -29,7 +30,7 @@ export async function VariantStockTab({ ctx, data, sp }: { ctx: AuthContext; dat
               tone="blue"
               description={`Parti maliyetiyle ${fmtMoney(o.heatemp_value_try, "TRY")}`}
             />
-            <StatCard
+            <StatTile
               label="Mekonsis rafı"
               scope="Güncel stok"
               value={fmtInt(o.mekonsis_qty)}
@@ -38,7 +39,7 @@ export async function VariantStockTab({ ctx, data, sp }: { ctx: AuthContext; dat
               tone="teal"
               description={`Teslim edildi, satılmadı · ${fmtMoney(o.mekonsis_value_try, "TRY")}`}
             />
-            <StatCard
+            <StatTile
               label="Toplam kalan"
               scope="Güncel stok"
               value={fmtInt(o.total_remaining)}
@@ -47,7 +48,7 @@ export async function VariantStockTab({ ctx, data, sp }: { ctx: AuthContext; dat
               tone="brand"
               description={`Mamul stok değeri ${fmtMoney(o.finished_value_try, "TRY")}`}
             />
-            <StatCard
+            <StatTile
               label="Açılış stoğu"
               value={fmtInt(o.opening_qty)}
               unit="adet giriş"
@@ -84,12 +85,7 @@ export async function VariantStockTab({ ctx, data, sp }: { ctx: AuthContext; dat
                   {fmtInt(o.total_remaining)} / {fmtInt(e.target_stock)} adet
                 </span>
               </div>
-              <ProgressBar
-                value={o.total_remaining}
-                max={e.target_stock}
-                tone={o.stock_status === "ok" ? "teal" : o.stock_status === "critical" ? "red" : "amber"}
-                label="Toplam kalan stoğun hedef stoğa oranı"
-              />
+              <StockProgress value={o.total_remaining} max={e.target_stock} status={o.stock_status} label="Toplam kalan stoğun hedef stoğa oranı" />
             </div>
           </Card>
         </>

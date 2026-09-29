@@ -1,5 +1,15 @@
 // Üretim ekranı özet tipleri (supabase/migrations/20260929094000_uretim_ozet.sql).
 
+import type { BatchView } from "@/lib/types";
+
+/** v_batch_list satırı: v_batches + açılış (stok) tarihi ve liste tarihi. */
+export interface BatchListRow extends BatchView {
+  /** Açılış partisinin stok tarihi (YYYY-MM-DD); üretim partilerinde null */
+  opening_date: string | null;
+  /** Açılışta stok tarihi (Türkiye günü başı), üretimde started_at. Filtre ve sıralama bununla. */
+  list_started_at: string;
+}
+
 export interface BatchSummary {
   all_batches: number;
   in_production_batches: number;

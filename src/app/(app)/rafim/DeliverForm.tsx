@@ -19,6 +19,18 @@ function parseQty(text: string): number | null {
   return n !== null && Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** En eski partiden başlayarak adedi partilere dağıtır (önizleme). */
+function fifoPlan<T extends { qty: number }>(batches: T[], qty: number): (T & { take: number })[] {
+  const out: (T & { take: number })[] = [];
+  let left = qty;
+  for (const b of batches) {
+    const take = Math.min(b.qty, left);
+    left -= take;
+    out.push({ ...b, take });
+  }
+  return out;
+}
+
 /**
  * Heatemp → Mekonsis teslimat formu. Kaynak stok, gönderilecek adet ve işlem sonrası
  * raf miktarları canlı gösterilir; FIFO ile hangi partilerden düşüleceği önizlenir.
@@ -42,12 +54,7 @@ export function DeliverForm({ options, today, initialVariant }: { options: Deliv
   const over = qty !== null && qty > max;
 
   // FIFO önizlemesi: en eski partiden başlayarak (tarih sırası)
-  let left = qty !== null && !over ? qty : 0;
-  const plan = asOfDate.map((b) => {
-    const take = Math.min(b.qty, left);
-    left -= take;
-    return { ...b, take };
-  });
+  const plan = fifoPlan(asOfDate, qty !== null && !over ? qty : 0);
   const planCost = plan.reduce((s, p) => s + p.take * p.unit_cost_try, 0);
   const sending = qty !== null && !over ? qty : 0;
   const heatempAfter = (option?.available ?? 0) - sending;
@@ -58,7 +65,10 @@ export function DeliverForm({ options, today, initialVariant }: { options: Deliv
   return (
     <ActionForm action={deliverToMekonsis}>
       <div className="space-y-5">
-        <FormSection title="Kaynak stok — Heatemp rafı" description="Yalnız Heatemp rafında duran tamamlanmış partilerden teslim edilebilir.">
+        <FormSection
+          title="Kaynak stok — Heatemp rafı"
+          description="Yalnız Heatemp rafında duran tamamlanmış partilerden teslim edilebilir."
+        >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField name="variant_id" label="Ürün / varyant" required className="sm:col-span-2">
               <select
@@ -205,29 +215,31 @@ export function DeliverForm({ options, today, initialVariant }: { options: Deliv
                   <thead>
                     <tr>
                       <th>Parti</th>
-                      <th>Rafa giriş</th>
-                      <th className="num">Mevcut</th>
+                      <th className="hidden sm:table-cell">Rafa giriş</th>
+                      <th className="num hidden sm:table-cell">Mevcut</th>
                       <th className="num">Düşülecek</th>
                       <th className="num">Kalacak</th>
-                      <th className="num">Birim maliyet (TL)</th>
+                      <th className="num hidden sm:table-cell">Birim maliyet (TL)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {plan.map((p) => (
                       <tr key={p.batch_id} className={cx(p.take === 0 && sending > 0 && "text-ink-muted")}>
-                        <td className="whitespace-nowrap">
-                          <span className="code">{p.batch_no}</span>
-                          {p.opening ? (
-                            <span className="ml-1.5 align-middle">
-                              <BatchStatusBadge status="completed" kind="opening" />
-                            </span>
-                          ) : null}
+                        <td>
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            <span className="code">{p.batch_no}</span>
+                            {p.opening ? <BatchStatusBadge status="completed" kind="opening" /> : null}
+                          </div>
+                          <span className="block text-[11px] text-ink-muted sm:hidden">
+                            {fmtInt(p.qty)} mevcut · giriş {fmtDate(p.received_on)}
+                          </span>
+                          <span className="block text-[11px] text-ink-muted sm:hidden">{fmtUnitMoney(p.unit_cost_try, "TRY")}/adet</span>
                         </td>
-                        <td className="whitespace-nowrap">{fmtDate(p.received_on)}</td>
-                        <td className="num">{fmtInt(p.qty)}</td>
+                        <td className="hidden whitespace-nowrap sm:table-cell">{fmtDate(p.received_on)}</td>
+                        <td className="num hidden sm:table-cell">{fmtInt(p.qty)}</td>
                         <td className={cx("num", p.take > 0 && "font-semibold text-ink")}>{p.take > 0 ? fmtInt(p.take) : "—"}</td>
                         <td className="num">{fmtInt(p.qty - p.take)}</td>
-                        <td className="num">{fmtUnitMoney(p.unit_cost_try, "TRY")}</td>
+                        <td className="num hidden sm:table-cell">{fmtUnitMoney(p.unit_cost_try, "TRY")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -242,8 +254,8 @@ export function DeliverForm({ options, today, initialVariant }: { options: Deliv
         </section>
 
         <Alert tone="info" title="Teslimat satış değildir">
-          Ciro, tahsilat veya kâr oluşmaz. Ürünler Mekonsis rafında satılana kadar Heatemp&apos;in varlığıdır; parti kimliği ve
-          birim maliyeti korunur.
+          Ciro, tahsilat veya kâr oluşmaz. Ürünler Mekonsis rafında satılana kadar Heatemp&apos;in varlığıdır; parti kimliği ve birim
+          maliyeti korunur.
         </Alert>
       </div>
       <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">

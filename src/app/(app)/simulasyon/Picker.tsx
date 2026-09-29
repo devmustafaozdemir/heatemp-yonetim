@@ -2,7 +2,7 @@
 
 import { Calculator, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui";
 
 export interface PickerVariant {
@@ -20,18 +20,23 @@ export function SimulationPicker({
   variants,
   initialVariant,
   initialQty,
+  maxQty,
 }: {
   variants: PickerVariant[];
   initialVariant: string | null;
   initialQty: number;
+  /** Sunucunun kabul ettiği en yüksek adet; üstü sessizce kırpılmaz, alan hatası verilir. */
+  maxQty: number;
 }) {
   const router = useRouter();
+  const uid = useId();
   const [pending, startTransition] = useTransition();
   const initialProduct = variants.find((v) => v.id === initialVariant)?.product_id ?? "";
   const [productId, setProductId] = useState(initialProduct);
   const [variantId, setVariantId] = useState(initialVariant ?? "");
   const [qty, setQty] = useState(String(initialQty));
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ field: "variant" | "qty"; message: string } | null>(null);
+  const errId = `${uid}-err`;
 
   const products = Array.from(new Map(variants.map((v) => [v.product_id, v.product_name])).entries());
   const productVariants = variants.filter((v) => v.product_id === productId);
@@ -39,12 +44,16 @@ export function SimulationPicker({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!variantId) {
-      setError("Önce ürün ve varyant seçin.");
+      setError({ field: "variant", message: "Önce ürün ve varyant seçin." });
       return;
     }
     const n = Number(qty.replace(",", "."));
     if (!Number.isInteger(n) || n <= 0) {
-      setError("Adet sıfırdan büyük bir tam sayı olmalıdır.");
+      setError({ field: "qty", message: "Adet sıfırdan büyük bir tam sayı olmalıdır." });
+      return;
+    }
+    if (n > maxQty) {
+      setError({ field: "qty", message: `Adet en fazla ${maxQty.toLocaleString("tr-TR")} olabilir.` });
       return;
     }
     setError(null);
@@ -52,12 +61,21 @@ export function SimulationPicker({
   }
 
   return (
-    <form onSubmit={submit} noValidate className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_7.5rem_auto]">
-      <label className="block min-w-0">
-        <span className="label">Ürün</span>
+    <form
+      onSubmit={submit}
+      noValidate
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_7.5rem_auto]"
+    >
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${uid}-urun`}>
+          Ürün
+        </label>
         <select
+          id={`${uid}-urun`}
           className="input"
           value={productId}
+          aria-invalid={error?.field === "variant" && !productId ? true : undefined}
+          aria-describedby={error?.field === "variant" && !productId ? errId : undefined}
           onChange={(e) => {
             setProductId(e.target.value);
             const first = variants.find((v) => v.product_id === e.target.value);
@@ -72,10 +90,23 @@ export function SimulationPicker({
             </option>
           ))}
         </select>
-      </label>
-      <label className="block min-w-0">
-        <span className="label">Varyant</span>
-        <select className="input" value={variantId} onChange={(e) => setVariantId(e.target.value)} disabled={!productId}>
+      </div>
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${uid}-varyant`}>
+          Varyant
+        </label>
+        <select
+          id={`${uid}-varyant`}
+          className="input"
+          value={variantId}
+          onChange={(e) => {
+            setVariantId(e.target.value);
+            if (error?.field === "variant") setError(null);
+          }}
+          aria-invalid={error?.field === "variant" ? true : undefined}
+          aria-describedby={error?.field === "variant" ? errId : undefined}
+          disabled={!productId}
+        >
           {!productId ? <option value="">Önce ürün seçin</option> : null}
           {productVariants.map((v) => (
             <option key={v.id} value={v.id}>
@@ -85,20 +116,28 @@ export function SimulationPicker({
             </option>
           ))}
         </select>
-      </label>
-      <label className="block min-w-0">
-        <span className="label">Adet</span>
+      </div>
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${uid}-adet`}>
+          Adet
+        </label>
         <input
+          id={`${uid}-adet`}
           className="input tabular-nums"
           type="number"
           min={1}
+          max={maxQty}
           step={1}
           inputMode="numeric"
           value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          aria-invalid={error?.startsWith("Adet") ? true : undefined}
+          onChange={(e) => {
+            setQty(e.target.value);
+            if (error?.field === "qty") setError(null);
+          }}
+          aria-invalid={error?.field === "qty" ? true : undefined}
+          aria-describedby={error?.field === "qty" ? errId : undefined}
         />
-      </label>
+      </div>
       <div>
         <Button type="submit" disabled={pending} className="w-full lg:w-auto" aria-busy={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Calculator aria-hidden />}
@@ -106,8 +145,8 @@ export function SimulationPicker({
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="field-error sm:col-span-2 lg:col-span-4">
-          {error}
+        <p id={errId} role="alert" className="field-error sm:col-span-2 lg:col-span-4">
+          {error.message}
         </p>
       ) : null}
     </form>

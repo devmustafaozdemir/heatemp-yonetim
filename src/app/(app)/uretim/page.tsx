@@ -1,19 +1,38 @@
-import { Ban, BarChart3, CheckCircle2, Coins, Factory, Hourglass, Layers, PackageOpen, Plus, Trophy } from "lucide-react";
+import { Ban, BarChart3, CheckCircle2, Clock, Coins, Factory, Hourglass, Layers, PackageOpen, Plus, TriangleAlert, Trophy } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Alert, ButtonLink, Card, EmptyState, ErrorState, MetricRow, PageHeader, ProgressBar, StatCard, TableWrap, cx } from "@/components/ui";
+import {
+  Alert,
+  Badge,
+  ButtonLink,
+  Card,
+  EmptyState,
+  ErrorState,
+  MetricRow,
+  PageHeader,
+  ProgressBar,
+  StatCard,
+  TableWrap,
+  cx,
+} from "@/components/ui";
 import { ListToolbar } from "@/components/ui/ListToolbar";
-import { LinkTabs, Pagination, SortTh } from "@/components/ui/list";
+import { LinkSegmented, LinkTabs, Pagination, SortTh } from "@/components/ui/list";
 import { requireMember } from "@/lib/auth";
-import { fmtDateTime, fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney, pctChange, todayTr } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney, pctChange, todayTr } from "@/lib/format";
 import { hrefWith, isoDateOrNull, parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { addDays, buckets } from "@/lib/period";
 import { load } from "@/lib/query";
 import type { BatchView } from "@/lib/types";
 import { MonthlyProductionChart } from "./_components/ProductionCharts";
-import type { BatchSummary, MonthlyProductionPoint, ProductionByVariantRow, ProductionMonthRow } from "./_components/types";
+import type {
+  BatchListRow,
+  BatchSummary,
+  MonthlyProductionPoint,
+  ProductionByVariantRow,
+  ProductionMonthRow,
+} from "./_components/types";
 import { BatchStatusBadge, CostChange } from "./StatusBadge";
 
 export const metadata: Metadata = { title: "Üretim Partileri" };
@@ -22,6 +41,14 @@ const BASE = "/uretim";
 const SORTABLE = ["batch_no", "product_name", "quantity", "started_at", "unit_cost_try", "total_cost_try", "heatemp_remaining"];
 const STATUS_KEYS = ["in_production", "completed", "cancelled", "opening"] as const;
 type StatusKey = (typeof STATUS_KEYS)[number];
+/** Açılış partisinde "başlama" = stok (açılış) tarihi; liste bu sütunla filtrelenir ve sıralanır. */
+const DATE_COLUMN = "list_started_at";
+const WIP_LIMIT = 3;
+
+type WipRow = Pick<
+  BatchView,
+  "id" | "batch_no" | "display_name" | "quantity" | "started_at" | "estimated_minutes" | "elapsed_minutes" | "total_cost_try"
+>;
 
 export default async function BatchesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const ctx = await requireMember();
@@ -32,14 +59,18 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
   const today = todayTr();
   const monthFrom = `${addDays(`${today.slice(0, 7)}-15`, -335).slice(0, 7)}-01`;
   const thisMonth = today.slice(0, 7);
-  const prevMonth = addDays(`${thisMonth}-01`, -1).slice(0, 7);
+  const prevMonthEnd = addDays(`${thisMonth}-01`, -1);
+  const prevMonth = prevMonthEnd.slice(0, 7);
+  // "Bu ay tamamlanan" karşılaştırması: geçen ayın AYNI günleriyle (1 … bugünün günü; kısa ayda ay sonu).
+  const prevSameFrom = `${prevMonth}-01`;
+  const prevSameTo = `${prevMonth}-${String(Math.min(Number(today.slice(8, 10)), Number(prevMonthEnd.slice(8, 10)))).padStart(2, "0")}`;
 
   // Liste: sunucu tarafı arama, filtre, sıralama ve sayfalama
   const pattern = searchPattern(lp.q);
   const from = isoDateOrNull(values.bas);
   const to = isoDateOrNull(values.bit);
   const filtered = (head = false) => {
-    let q = ctx.supabase.from("v_batches").select("*", { count: "exact", head });
+    let q = ctx.supabase.from("v_batch_list").select("*", { count: "exact", head });
     if (pattern) {
       q = q.or(`batch_no.ilike.${pattern},display_name.ilike.${pattern},product_code.ilike.${pattern},variant_code.ilike.${pattern}`);
     }
@@ -48,24 +79,35 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
     else if (durum === "cancelled") q = q.eq("status", "cancelled");
     else if (durum === "opening") q = q.eq("kind", "opening");
     if (isUuid(values.urun)) q = q.eq("product_id", values.urun);
-    // Türkiye saati (UTC+3) gün sınırları
-    if (from) q = q.gte("started_at", `${from}T00:00:00+03:00`);
-    if (to) q = q.lt("started_at", `${addDays(to, 1)}T00:00:00+03:00`);
+    // Türkiye saati (UTC+3) gün sınırları; açılış partilerinde stok (açılış) tarihi
+    if (from) q = q.gte(DATE_COLUMN, `${from}T00:00:00+03:00`);
+    if (to) q = q.lt(DATE_COLUMN, `${addDays(to, 1)}T00:00:00+03:00`);
     return q;
   };
 
-  const [res, summaryRes, monthlyRes, byVariantRes, productsRes] = await Promise.all([
+  const sortColumn = !lp.sort || lp.sort === "started_at" ? DATE_COLUMN : lp.sort;
+  const [res, summaryRes, monthlyRes, byVariantRes, productsRes, prevSameRes, wipRes] = await Promise.all([
     load(
       filtered()
-        .order(lp.sort ?? "started_at", { ascending: lp.dir === "asc", nullsFirst: false })
+        .order(sortColumn, { ascending: lp.dir === "asc", nullsFirst: false })
         .order("batch_no", { ascending: false })
         .range(lp.from, lp.to)
-        .returns<BatchView[]>(),
+        .returns<BatchListRow[]>(),
     ),
     load(ctx.supabase.from("v_batch_summary").select("*").single<BatchSummary>()),
     load<ProductionMonthRow[]>(ctx.supabase.rpc("production_monthly", { p_from: monthFrom })),
     load<ProductionByVariantRow[]>(ctx.supabase.rpc("production_by_variant", { p_from: monthFrom, p_to: today })),
     load(ctx.supabase.from("products").select("id, name").order("name").returns<{ id: string; name: string }[]>()),
+    load<ProductionByVariantRow[]>(ctx.supabase.rpc("production_by_variant", { p_from: prevSameFrom, p_to: prevSameTo })),
+    load(
+      ctx.supabase
+        .from("v_batches")
+        .select("id, batch_no, display_name, quantity, started_at, estimated_minutes, elapsed_minutes, total_cost_try")
+        .eq("status", "in_production")
+        .order("started_at")
+        .limit(WIP_LIMIT)
+        .returns<WipRow[]>(),
+    ),
   ]);
 
   // Sayfa numarası sonuç sayısını aşıyorsa (ör. filtre değişti) son sayfaya yönlendir.
@@ -81,7 +123,9 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
   const months = monthlyRes.data ?? [];
   const monthRow = (m: string) => months.find((r) => r.month_start.slice(0, 7) === m);
   const cur = monthRow(thisMonth);
-  const prev = monthRow(prevMonth);
+  // Geçen ayın aynı günlerinde tamamlanan adet (hata varsa karşılaştırma gösterilmez, 0 sayılmaz)
+  const prevSameQty = prevSameRes.error ? null : (prevSameRes.data ?? []).reduce((a, r) => a + Number(r.quantity), 0);
+  const prevSameLabel = `${fmtDate(prevSameFrom).slice(0, 2)}–${fmtDate(prevSameTo).slice(0, 5)}`;
   const points: MonthlyProductionPoint[] = buckets(monthFrom, today, "aylik").map((month) => {
     const r = monthRow(month);
     return {
@@ -152,12 +196,9 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
         }
       />
 
-      {summaryRes.error || monthlyRes.error ? (
-        <Card className="mb-4">
-          <ErrorState message={(summaryRes.error ?? monthlyRes.error)!} compact title="Üretim özeti yüklenemedi" />
-        </Card>
-      ) : summary ? (
-        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Her kart kendi kaynağının hatasını gösterir: biri hata verirse diğerleri yine görünür. */}
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {summary ? (
           <StatCard
             label="Üretimde"
             scope="Güncel"
@@ -172,6 +213,12 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
                 : "Devam eden üretim yok"
             }
           />
+        ) : (
+          <StatError label="Üretimde" message={summaryRes.error ?? "Özet okunamadı."} />
+        )}
+        {monthlyRes.error ? (
+          <StatError label="Bu ay tamamlanan" message={monthlyRes.error} />
+        ) : (
           <StatCard
             label="Bu ay tamamlanan"
             scope="Bu ay"
@@ -179,21 +226,40 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
             unit="adet"
             icon={CheckCircle2}
             tone="teal"
-            delta={{ pct: pctChange(cur?.completed_qty ?? 0, prev?.completed_qty ?? 0), label: "geçen aya göre (adet)" }}
-            description={`${fmtInt(cur?.completed_batches ?? 0)} parti · maliyet ${fmtMoney(cur?.completed_cost_try ?? 0, "TRY")}`}
+            delta={
+              prevSameQty
+                ? { pct: pctChange(cur?.completed_qty ?? 0, prevSameQty), label: `geçen ayın aynı günlerine göre (${prevSameLabel})` }
+                : undefined
+            }
+            description={
+              <>
+                {fmtInt(cur?.completed_batches ?? 0)} parti · maliyet {fmtMoney(cur?.completed_cost_try ?? 0, "TRY")}
+                {prevSameQty === null ? (
+                  <span className="block">Geçen ay karşılaştırması okunamadı</span>
+                ) : prevSameQty === 0 ? (
+                  <span className="block">Geçen ayın aynı günlerinde ({prevSameLabel}) tamamlanan yok</span>
+                ) : null}
+              </>
+            }
           />
+        )}
+        {monthlyRes.error ? (
+          <StatError label="Ort. birim maliyet" message={monthlyRes.error} />
+        ) : (
           <StatCard
             label="Ort. birim maliyet"
             scope="Son 12 ay"
-            value={year.qty > 0 ? fmtUnitMoney(year.costTry / year.qty, "TRY") : "—"}
+            value={year.qty > 0 ? fmtMoney(year.costTry / year.qty, "TRY") : "—"}
             icon={Coins}
             tone="blue"
             description={
               year.qty > 0
-                ? `${fmtUnitMoney(year.costUsd / year.qty, "USD")} · ${fmtInt(year.qty)} adet üzerinden ağırlıklı`
+                ? `${fmtMoney(year.costUsd / year.qty, "USD")} · ${fmtInt(year.qty)} adet üzerinden ağırlıklı`
                 : "Son 12 ayda tamamlanan üretim yok"
             }
           />
+        )}
+        {summary ? (
           <StatCard
             label="Açılış stoğu"
             scope="Sistem öncesi"
@@ -202,44 +268,53 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
             icon={PackageOpen}
             tone="violet"
             href="/uretim?durum=opening"
-            description={`${fmtInt(summary.opening_batches)} parti · ${fmtMoney(summary.opening_value_try, "TRY")} · üretim sayılmaz`}
+            description={`${fmtInt(summary.opening_batches)} parti · açılış değeri ${fmtMoney(summary.opening_value_try, "TRY")} · üretim sayılmaz`}
           />
-        </div>
-      ) : null}
+        ) : (
+          <StatError label="Açılış stoğu" message={summaryRes.error ?? "Özet okunamadı."} />
+        )}
+      </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <Card title="Aylık üretim" description="Son 12 ay · yalnız üretim partileri (açılış stoğu hariç)" icon={BarChart3} padded={false}>
           {monthlyRes.error ? (
             <ErrorState message={monthlyRes.error} compact />
           ) : (
-            <>
+            <div className="flex h-full flex-col">
               <div className="p-4">
                 <MonthlyProductionChart data={points} />
               </div>
-              <div className="border-t border-line">
+              {/* Sağ sütun daha uzunsa özet satırı kartın dibine yaslanır. */}
+              <div className="mt-auto border-t border-line">
                 <MetricRow
                   items={[
-                    { label: "Başlatılan", value: `${fmtInt(year.started)} parti`, hint: year.cancelled ? `${fmtInt(year.cancelled)} iptal` : "iptal yok" },
+                    {
+                      label: "Başlatılan",
+                      value: `${fmtInt(year.started)} parti`,
+                      hint: year.cancelled ? `${fmtInt(year.cancelled)} iptal` : "iptal yok",
+                    },
                     { label: "Tamamlanan", value: `${fmtInt(year.qty)} adet`, hint: `${fmtInt(year.batches)} parti` },
                     { label: "Üretim maliyeti", value: fmtMoney(year.costTry, "TRY"), hint: fmtMoney(year.costUsd, "USD") },
                     {
                       label: "Süre (gerçek / tahmini)",
                       value: year.batches > 0 ? fmtMinutes(year.act) : "—",
-                      hint: year.batches > 0 ? `tahmini ${fmtMinutes(year.est)}` : "tamamlanan parti yok",
+                      hint:
+                        year.batches === 0
+                          ? "tamamlanan parti yok"
+                          : year.est > 0
+                            ? `tahmini ${fmtMinutes(year.est)}`
+                            : "tahmini süre tanımlı değil",
                     },
                   ]}
                 />
               </div>
-            </>
+            </div>
           )}
         </Card>
-        <div className="grid min-w-0 content-start gap-4">
+        {/* Sağ sütun: masaüstünde "Aylık üretim" kartı yüksekliğine uzar; boşluk son kartın içinde kalır. */}
+        <div className="grid min-w-0 content-start gap-4 md:grid-cols-2 xl:flex xl:flex-col">
           <Card title="En çok üretilen" description="Son 12 ay · tamamlanan üretim partileri" icon={Trophy} padded={false}>
-            {byVariantRes.error ? (
-              <ErrorState message={byVariantRes.error} compact />
-            ) : (
-              <TopProducedList rows={byVariantRes.data ?? []} />
-            )}
+            {byVariantRes.error ? <ErrorState message={byVariantRes.error} compact /> : <TopProducedList rows={byVariantRes.data ?? []} />}
           </Card>
           <Card title="Parti durumları" description="Tüm partiler · sayı" icon={Layers}>
             {summaryRes.error ? (
@@ -248,13 +323,42 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
               <StatusDistribution summary={summary} />
             ) : null}
           </Card>
+          <Card
+            title="Üretimdeki partiler"
+            description="Devam eden partiler · en eski önce"
+            icon={Hourglass}
+            padded={false}
+            className="md:col-span-2 xl:flex-1"
+          >
+            {wipRes.error ? (
+              <ErrorState message={wipRes.error} compact />
+            ) : (
+              <WipList rows={wipRes.data ?? []} total={summary?.in_production_batches ?? null} isAdmin={isAdmin} />
+            )}
+          </Card>
         </div>
       </div>
 
       <Card padded={false}>
-        <div className="px-2">
+        {/* Masaüstü/tablet: sekmeler. Mobilde 5 sekme sığmadığı için satırlara kırılan segment düğmeleri. */}
+        <div className="hidden px-2 sm:block">
           <LinkTabs tabs={tabs} active={durum ?? ""} />
         </div>
+        <nav aria-label="Durum filtresi" className="border-b border-line px-3 py-2.5 sm:hidden">
+          <LinkSegmented
+            active={durum ?? ""}
+            items={tabs.map((t) => ({
+              key: t.key,
+              href: t.href,
+              label: (
+                <>
+                  {t.label}
+                  {t.count !== null ? <span className="ml-1 text-ink-muted tabular-nums">{fmtInt(t.count)}</span> : null}
+                </>
+              ),
+            }))}
+          />
+        </nav>
         <ListToolbar
           basePath={BASE}
           values={values}
@@ -263,16 +367,30 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
           search={{ placeholder: "Parti no, ürün veya kod ara…" }}
           filters={
             productsRes.data
-              ? [{ key: "urun", label: "Ürün", allLabel: "Ürün: tümü", options: productsRes.data.map((p) => ({ value: p.id, label: p.name })) }]
+              ? [
+                  {
+                    key: "urun",
+                    label: "Ürün",
+                    allLabel: "Ürün: tümü",
+                    options: productsRes.data.map((p) => ({ value: p.id, label: p.name })),
+                  },
+                ]
               : []
           }
-          dateRange={{ label: "Başlama" }}
-        />
+          dateRange={{ label: "Başlama / açılış" }}
+        >
+          {productsRes.error ? (
+            <span className="flex items-center gap-1 text-xs text-ink-soft" role="status" title={productsRes.error}>
+              <TriangleAlert className="size-3.5 shrink-0 text-chart-amber" aria-hidden />
+              Ürün filtresi yüklenemedi
+            </span>
+          ) : null}
+        </ListToolbar>
         {durum === "opening" ? (
           <div className="border-b border-line px-4 py-3">
             <Alert tone="info">
-              Açılış stoğu partileri sistem öncesi mevcut mamuldür; hammadde tüketmez, süre ve maliyet karşılaştırmasına girmez, üretilen adet
-              ve üretim harcamasına dahil edilmez.
+              Açılış stoğu partileri sistem öncesi mevcut mamuldür; hammadde tüketmez, süre ve maliyet karşılaştırmasına girmez, üretilen
+              adet ve üretim harcamasına dahil edilmez.
             </Alert>
           </div>
         ) : null}
@@ -280,7 +398,11 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
           <ErrorState message={res.error} />
         ) : rows.length === 0 ? (
           <EmptyState
-            title={Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k)) ? "Filtreye uyan parti yok" : "Henüz parti yok"}
+            title={
+              Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k))
+                ? "Filtreye uyan parti yok"
+                : "Henüz parti yok"
+            }
             icon={Factory}
             action={
               isAdmin ? (
@@ -300,7 +422,12 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
                   <SortTh label="Parti / durum" column="batch_no" {...sortProps} />
                   <SortTh label="Ürün / varyant" column="product_name" {...sortProps} />
                   <SortTh label="Adet" column="quantity" align="right" {...sortProps} />
-                  <SortTh label="Başlama / bitiş" column="started_at" {...sortProps} />
+                  <SortTh
+                    label="Başlama / bitiş"
+                    column="started_at"
+                    {...sortProps}
+                    title="Başlama ve bitiş (veya iptal) zamanı; açılış stoğunda stok (açılış) tarihi"
+                  />
                   <th className="num" title="Tahmini süre / gerçekleşen (veya geçen) süre">
                     Süre
                   </th>
@@ -343,7 +470,7 @@ export default async function BatchesPage({ searchParams }: { searchParams: Prom
   );
 }
 
-function BatchRow({ b }: { b: BatchView }) {
+function BatchRow({ b }: { b: BatchListRow }) {
   const opening = b.kind === "opening";
   return (
     <tr>
@@ -355,24 +482,35 @@ function BatchRow({ b }: { b: BatchView }) {
           <BatchStatusBadge status={b.status} kind={b.kind} />
         </div>
       </td>
-      <td className="min-w-48">
+      <td className="min-w-36 sm:min-w-48">
         <div className="font-medium text-ink">{b.product_name}</div>
         <div className="text-xs text-ink-muted" title={`Varyant kodu: ${b.variant_code}`}>
           {b.variant_name}
         </div>
+        {/* Dar ekranda maliyet sütunları kaydırma dışında kalır; toplam maliyet ürün adının altında da görünür. */}
+        <div className="mt-1 text-xs whitespace-nowrap text-ink-soft tabular-nums sm:hidden">Toplam {fmtMoney(b.total_cost_try, "TRY")}</div>
       </td>
       <td className="num font-medium">{fmtInt(b.quantity)}</td>
       <td className="text-xs whitespace-nowrap tabular-nums">
-        <div className="text-ink-soft">{fmtDateTime(b.started_at)}</div>
-        <div className="text-ink-muted">
-          {opening
-            ? "Açılış kaydı"
-            : b.status === "completed"
-              ? `Bitiş ${fmtDateTime(b.completed_at)}`
-              : b.status === "cancelled"
-                ? `İptal ${fmtDateTime(b.cancelled_at)}`
-                : "Devam ediyor"}
-        </div>
+        {opening ? (
+          <>
+            <div className="text-ink-soft">Açılış {fmtDate(b.opening_date)}</div>
+            <div className="text-ink-muted" title="Açılış kaydının sisteme girildiği zaman">
+              Kayıt {fmtDateTime(b.started_at)}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-ink-soft">{fmtDateTime(b.started_at)}</div>
+            <div className="text-ink-muted">
+              {b.status === "completed"
+                ? `Bitiş ${fmtDateTime(b.completed_at)}`
+                : b.status === "cancelled"
+                  ? `İptal ${fmtDateTime(b.cancelled_at)}`
+                  : "Devam ediyor"}
+            </div>
+          </>
+        )}
       </td>
       <td className="num text-xs">
         {opening ? (
@@ -380,7 +518,13 @@ function BatchRow({ b }: { b: BatchView }) {
         ) : (
           <>
             <div className="text-ink-soft">
-              {fmtMinutes(b.estimated_minutes)} <span className="text-ink-muted">tahmini</span>
+              {Number(b.estimated_minutes) > 0 ? (
+                <>
+                  {fmtMinutes(b.estimated_minutes)} <span className="text-ink-muted">tahmini</span>
+                </>
+              ) : (
+                <span className="text-ink-muted">Süre tanımlı değil</span>
+              )}
             </div>
             <div className="text-ink-muted">
               {b.status === "completed"
@@ -392,10 +536,10 @@ function BatchRow({ b }: { b: BatchView }) {
           </>
         )}
       </td>
-      <td className="num">
-        {fmtUnitMoney(b.unit_cost_try, "TRY")}
+      <td className="num relative" title={`${fmtUnitMoney(b.unit_cost_try, "TRY")} · ${fmtUnitMoney(b.unit_cost_usd, "USD")}`}>
+        {fmtMoney(b.unit_cost_try, "TRY")}
         <div className="flex items-center justify-end gap-1.5 text-xs text-ink-muted">
-          {fmtUnitMoney(b.unit_cost_usd, "USD")}
+          {fmtMoney(b.unit_cost_usd, "USD")}
           {!opening && b.status === "completed" && b.unit_cost_usd_change_pct !== null ? (
             <CostChange pct={b.unit_cost_usd_change_pct} prev={b.prev_batch_no} />
           ) : null}
@@ -453,11 +597,74 @@ function TopProducedList({ rows }: { rows: ProductionByVariantRow[] }) {
   );
 }
 
+function WipList({ rows, total, isAdmin }: { rows: WipRow[]; total: number | null; isAdmin: boolean }) {
+  if (rows.length === 0) {
+    // Kısa boş durum: sağ sütunda yer kaplamaz; kart kalan yüksekliği doldurur.
+    return (
+      <div className="flex h-full flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+        <p className="text-[13px] text-ink-muted">Devam eden üretim yok. Üretim, simülasyon ekranından başlatılır.</p>
+        {isAdmin ? (
+          <ButtonLink href="/simulasyon" size="sm" variant="secondary">
+            <Plus aria-hidden />
+            Yeni üretim
+          </ButtonLink>
+        ) : null}
+      </div>
+    );
+  }
+  const more = total !== null ? total - rows.length : 0;
+  return (
+    <ul className="divide-y divide-line">
+      {rows.map((r) => {
+        const est = Number(r.estimated_minutes);
+        const over = est > 0 && Number(r.elapsed_minutes) > est;
+        return (
+          <li key={r.id} className="flex items-start justify-between gap-3 px-4 py-2.5">
+            <div className="min-w-0">
+              <Link href={`/uretim/${r.id}`} className="link font-mono text-xs">
+                {r.batch_no}
+              </Link>
+              <div className="text-[13px] break-words text-ink-soft">
+                {r.display_name} <span className="text-xs whitespace-nowrap text-ink-muted tabular-nums">· {fmtInt(r.quantity)} adet</span>
+              </div>
+            </div>
+            <div className="shrink-0 text-right text-xs tabular-nums">
+              <div className="font-medium text-ink" title={`Başlama ${fmtDateTime(r.started_at)}`}>
+                {fmtMinutes(r.elapsed_minutes)} geçti
+              </div>
+              <div className="mt-0.5">
+                {est > 0 ? (
+                  over ? (
+                    <Badge tone="red" icon={Clock}>
+                      Tahmini aştı
+                    </Badge>
+                  ) : (
+                    <span className="text-ink-muted">tahmini {fmtMinutes(est)}</span>
+                  )
+                ) : (
+                  <span className="text-ink-muted">süre tanımlı değil</span>
+                )}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+      {more > 0 ? (
+        <li className="px-4 py-2 text-xs">
+          <Link href="/uretim?durum=in_production" className="link">
+            ve {fmtInt(more)} parti daha
+          </Link>
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
 const STATUS_PARTS = [
-  { key: "in_production", label: "Üretimde", icon: Hourglass, bar: "bg-chart-amber", text: "text-[#9a6711]" },
-  { key: "completed", label: "Tamamlandı", icon: CheckCircle2, bar: "bg-chart-teal", text: "text-[#078a78]" },
-  { key: "cancelled", label: "İptal", icon: Ban, bar: "bg-slate-400", text: "text-slate-600" },
-  { key: "opening", label: "Açılış stoğu", icon: PackageOpen, bar: "bg-chart-violet", text: "text-chart-violet" },
+  { key: "in_production", label: "Üretimde", icon: Hourglass, bar: "bg-chart-amber", iconColor: "text-chart-amber" },
+  { key: "completed", label: "Tamamlandı", icon: CheckCircle2, bar: "bg-chart-teal", iconColor: "text-chart-teal" },
+  { key: "cancelled", label: "İptal", icon: Ban, bar: "bg-chart-slate", iconColor: "text-chart-slate" },
+  { key: "opening", label: "Açılış stoğu", icon: PackageOpen, bar: "bg-chart-violet", iconColor: "text-chart-violet" },
 ] as const;
 
 function StatusDistribution({ summary }: { summary: BatchSummary }) {
@@ -483,8 +690,8 @@ function StatusDistribution({ summary }: { summary: BatchSummary }) {
               href={`/uretim?durum=${p.key}`}
               className="flex items-center justify-between gap-2 rounded-md border border-line px-2.5 py-2 text-xs hover:bg-canvas"
             >
-              <span className={cx("flex min-w-0 items-center gap-1.5 font-medium", p.text)}>
-                <p.icon className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex min-w-0 items-center gap-1.5 font-medium text-ink-soft">
+                <p.icon className={cx("size-3.5 shrink-0", p.iconColor)} aria-hidden />
                 <span>{p.label}</span>
               </span>
               <span className="font-semibold text-ink tabular-nums">{fmtInt(count[p.key])}</span>
@@ -492,6 +699,16 @@ function StatusDistribution({ summary }: { summary: BatchSummary }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Özet kartı yerine: yalnız bu kartın kaynağı okunamadı (diğer kartlar etkilenmez). */
+function StatError({ label, message }: { label: string; message: string }) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs font-medium tracking-wide text-ink-muted uppercase">{label}</p>
+      <ErrorState message={message} compact title="Yüklenemedi" />
     </div>
   );
 }

@@ -81,8 +81,8 @@ export interface MovementRow {
   sale_id: string | null;
   created_at: string;
   production_batches: { batch_no: string; kind: "production" | "opening" } | null;
-  deliveries: { delivery_no: string } | null;
-  sales: { sale_no: string } | null;
+  deliveries: { delivery_no: string; status: "active" | "cancelled" } | null;
+  sales: { sale_no: string; status: "completed" | "cancelled" } | null;
 }
 
 /** Maliyet geçmişi grafiği için tamamlanmış üretim partisi noktası */

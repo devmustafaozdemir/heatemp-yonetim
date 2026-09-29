@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
-import { AXIS_TICK, CHART, ChartFrame, GRID_PROPS, HBarChart, Segmented, TooltipBox } from "@/components/charts/kit";
+import { AXIS_TICK, CHART, ChartFrame, GRID_PROPS, Segmented, TooltipBox } from "@/components/charts/kit";
 import { fmtCompactMoney, fmtInt, fmtMoney, fmtMonth } from "@/lib/format";
-import type { MonthlyProductionPoint, ProductionByVariantRow } from "./types";
+import type { MonthlyProductionPoint } from "./types";
 
 type Mode = "qty" | "cost";
 
@@ -39,13 +39,23 @@ export function MonthlyProductionChart({ data }: { data: MonthlyProductionPoint[
       </div>
       <ChartFrame
         height={240}
-        label={mode === "qty" ? "Son 12 ayda başlatılan ve tamamlanan üretim adedi" : "Son 12 ayda tamamlanan üretim partilerinin maliyeti (TL)"}
+        label={
+          mode === "qty" ? "Son 12 ayda başlatılan ve tamamlanan üretim adedi" : "Son 12 ayda tamamlanan üretim partilerinin maliyeti (TL)"
+        }
         empty={empty}
         emptyText="Son 12 ayda üretim partisi yok. Açılış stoğu üretim sayılmaz."
       >
         <BarChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }} barCategoryGap="22%" barGap={2}>
           <CartesianGrid {...GRID_PROPS} />
-          <XAxis dataKey="month" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(m: string) => fmtMonth(m)} interval="preserveStartEnd" minTickGap={8} />
+          <XAxis
+            dataKey="month"
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(m: string) => fmtMonth(m)}
+            interval="preserveStartEnd"
+            minTickGap={8}
+          />
           <YAxis
             tick={AXIS_TICK}
             tickLine={false}
@@ -63,8 +73,16 @@ export function MonthlyProductionChart({ data }: { data: MonthlyProductionPoint[
                 <TooltipBox
                   title={fmtMonth(p.month)}
                   rows={[
-                    { label: "Başlatılan", value: `${fmtInt(p.startedQty)} adet · ${fmtInt(p.startedBatches)} parti`, color: mode === "qty" ? CHART.blue : undefined },
-                    { label: "Tamamlanan", value: `${fmtInt(p.completedQty)} adet · ${fmtInt(p.completedBatches)} parti`, color: mode === "qty" ? CHART.teal : undefined },
+                    {
+                      label: "Başlatılan",
+                      value: `${fmtInt(p.startedQty)} adet · ${fmtInt(p.startedBatches)} parti`,
+                      color: mode === "qty" ? CHART.blue : undefined,
+                    },
+                    {
+                      label: "Tamamlanan",
+                      value: `${fmtInt(p.completedQty)} adet · ${fmtInt(p.completedBatches)} parti`,
+                      color: mode === "qty" ? CHART.teal : undefined,
+                    },
                     { label: "Maliyet (TL)", value: fmtMoney(p.costTry, "TRY"), color: mode === "cost" ? CHART.violet : undefined },
                     { label: "Maliyet (USD)", value: fmtMoney(p.costUsd, "USD") },
                     ...(p.cancelledBatches ? [{ label: "İptal edilen", value: `${fmtInt(p.cancelledBatches)} parti` }] : []),
@@ -74,7 +92,15 @@ export function MonthlyProductionChart({ data }: { data: MonthlyProductionPoint[
             }}
           />
           {series.map((s) => (
-            <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color} radius={[3, 3, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            <Bar
+              key={s.key}
+              dataKey={s.key}
+              name={s.label}
+              fill={s.color}
+              radius={[3, 3, 0, 0]}
+              maxBarSize={18}
+              isAnimationActive={false}
+            />
           ))}
         </BarChart>
       </ChartFrame>
@@ -89,31 +115,5 @@ export function MonthlyProductionChart({ data }: { data: MonthlyProductionPoint[
         </div>
       ) : null}
     </div>
-  );
-}
-
-/** Son 12 ayda en çok üretilen varyantlar (tamamlanan üretim partileri, adet). */
-export function TopProducedChart({ rows }: { rows: ProductionByVariantRow[] }) {
-  const top = rows.slice(0, 8);
-  const byId = new Map(top.map((r) => [r.variant_id, r]));
-  return (
-    <HBarChart
-      data={top.map((r) => ({ key: r.variant_id, label: r.display_name, value: Number(r.quantity) }))}
-      format={(v) => `${fmtInt(v)} adet`}
-      axisFormat={(v) => fmtInt(v)}
-      color={CHART.teal}
-      label="Son 12 ayda en çok üretilen varyantlar (adet)"
-      emptyText="Son 12 ayda tamamlanan üretim partisi yok."
-      tooltipRows={(key) => {
-        const r = byId.get(key);
-        return r
-          ? [
-              { label: "Parti", value: fmtInt(r.batches) },
-              { label: "Maliyet (TL)", value: fmtMoney(r.cost_try, "TRY") },
-              { label: "Maliyet (USD)", value: fmtMoney(r.cost_usd, "USD") },
-            ]
-          : [];
-      }}
-    />
   );
 }

@@ -12,8 +12,9 @@ import { first, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { Product, VariantView } from "@/lib/types";
-import { KpiStrip, ProductThumb, fmtCostRange } from "../_components/bits";
-import type { ProductListRow } from "../_components/types";
+import { KpiStrip, ProductThumb, ShelfSplit, fmtCostRange } from "../_components/bits";
+import { TabLabel } from "../_components/TabLabel";
+import type { ProductListRow, RecipeCostRow } from "../_components/types";
 import { createVariant } from "../actions";
 import { VariantFields } from "../VariantFields";
 import { BomTab } from "./BomTab";
@@ -30,12 +31,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: data?.name ?? "Ürün" };
 }
 
+/** short: dar ekranda (640 px altı) gösterilen kısa ad; beş sekme 390 px'e sığar. */
 const TABS = [
-  { key: "genel", label: "Genel bilgiler" },
-  { key: "varyantlar", label: "Varyantlar" },
-  { key: "bom", label: "BOM / reçete" },
-  { key: "maliyet", label: "Maliyet ve üretim süresi" },
-  { key: "stok", label: "Stok ve hareketler" },
+  { key: "genel", label: "Genel bilgiler", short: "Genel" },
+  { key: "varyantlar", label: "Varyantlar", short: "Varyantlar" },
+  { key: "bom", label: "BOM / reçete", short: "BOM" },
+  { key: "maliyet", label: "Maliyet ve üretim süresi", short: "Maliyet" },
+  { key: "stok", label: "Stok ve hareketler", short: "Stok" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -48,15 +50,26 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const requested = first(sp.sekme);
   const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : "genel";
 
-  const [product, variants, summary] = await Promise.all([
+  const [product, variants, summary, recipes] = await Promise.all([
     must(ctx.supabase.from("products").select("*").eq("id", id).maybeSingle<Product>(), "Ürün"),
     must(ctx.supabase.from("v_variants").select("*").eq("product_id", id).order("variant_name").returns<VariantView[]>(), "Varyantlar"),
     load(ctx.supabase.from("v_product_list").select("*").eq("id", id).maybeSingle<ProductListRow>()),
+    load(
+      ctx.supabase
+        .from("v_variant_recipe_cost")
+        .select("variant_id, bom_line_count")
+        .eq("product_id", id)
+        .gt("bom_line_count", 0)
+        .returns<Pick<RecipeCostRow, "variant_id" | "bom_line_count">[]>(),
+    ),
   ]);
   if (!product) notFound();
   const vs = variants ?? [];
   const s = summary.data;
-  const simVariant = vs.find((v) => v.is_active) ?? vs[0];
+  // Simülasyon yalnız reçetesi olan varyantla anlamlıdır: önce reçeteli aktif varyant, yoksa
+  // reçeteli herhangi bir varyant. Hiçbirinin reçetesi yoksa (veya bilgi alınamadıysa) düğme gösterilmez.
+  const withBom = new Set((recipes.data ?? []).map((r) => r.variant_id));
+  const simVariant = vs.find((v) => v.is_active && withBom.has(v.id)) ?? vs.find((v) => withBom.has(v.id));
   const base = `/urunler/${id}`;
 
   return (
@@ -66,6 +79,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         crumbs={[{ label: product.code }]}
         meta={
           <>
+            <span className="code rounded bg-canvas px-1.5 py-0.5 text-ink-soft" title="Ürün kodu">
+              {product.code}
+            </span>
             {product.is_active ? <Badge tone="green">Aktif</Badge> : <Badge>Pasif</Badge>}
             {s?.worst_stock_status ? (
               <StockStatusBadge
@@ -84,7 +100,11 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         actions={
           <>
             {simVariant ? (
-              <ButtonLink href={`/simulasyon?varyant=${simVariant.id}&adet=1`} variant="secondary">
+              <ButtonLink
+                href={`/simulasyon?varyant=${simVariant.id}&adet=1`}
+                variant="secondary"
+                title={`${simVariant.variant_name} (${simVariant.variant_code}) reçetesiyle`}
+              >
                 <Calculator aria-hidden />
                 Üretim simülasyonu
               </ButtonLink>
@@ -116,12 +136,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
 
       <Card padded={false} className="mb-4">
         <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-5">
-          <div className="flex items-center gap-3 sm:block">
+          {/* Görsel yoksa mobilde yer tutucu gösterilmez (ürün kodu başlıkta). */}
+          <div className={product.image_path ? "shrink-0" : "hidden shrink-0 sm:block"}>
             <ProductThumb path={product.image_path} size="xl" />
-            <div className="sm:hidden">
-              <div className="code text-ink-muted">{product.code}</div>
-              <div className="text-xs text-ink-muted">{fmtInt(vs.length)} varyant</div>
-            </div>
           </div>
           {summary.error ? (
             <Alert tone="error" className="flex-1">
@@ -133,7 +150,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 {
                   label: "Toplam stok",
                   value: `${fmtInt(s.total_remaining)} adet`,
-                  sub: `Heatemp ${fmtInt(s.heatemp_qty)} · Mekonsis ${fmtInt(s.mekonsis_qty)}`,
+                  sub: <ShelfSplit heatemp={s.heatemp_qty} mekonsis={s.mekonsis_qty} />,
                 },
                 {
                   label: "Varyant",
@@ -164,14 +181,13 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             />
           ) : null}
         </div>
-        <div className="border-t border-line px-2">
+        <div className="border-t border-line sm:px-2">
           <LinkTabs
             active={tab}
             tabs={TABS.map((t) => ({
               key: t.key,
-              label: t.label,
+              label: <TabLabel label={t.label} short={t.short} count={t.key === "varyantlar" ? vs.length : undefined} active={t.key === tab} />,
               href: t.key === "genel" ? base : `${base}?sekme=${t.key}`,
-              count: t.key === "varyantlar" ? vs.length : undefined,
             }))}
           />
         </div>

@@ -2,7 +2,7 @@
 
 import { Bar, BarChart, Cell, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
 import { AXIS_TICK, CHART, ChartFrame, DonutChart, TooltipBox } from "@/components/charts/kit";
-import { fmtInt, fmtMoney } from "@/lib/format";
+import { fmtCompactMoney, fmtInt, fmtMoney, fmtNum } from "@/lib/format";
 
 export interface BottleneckRow {
   key: string;
@@ -14,6 +14,25 @@ export interface BottleneckRow {
   perUnit: string;
 }
 
+/** 0'dan başlayan "yuvarlak" eksen işaretleri (1-2-2,5-5 × 10ⁿ adımlarla, en fazla ~5 aralık). */
+export function niceTicks(max: number, target = 4): number[] {
+  if (!Number.isFinite(max) || max <= 0) return [0, 1];
+  const raw = max / target;
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((s) => s >= raw) ?? 10 * pow;
+  const unit = Math.max(1, step); // adet tam sayıdır
+  const count = Math.ceil(max / unit);
+  return Array.from({ length: count + 1 }, (_, i) => i * unit);
+}
+
+/** Eksen için kısa adet: 250 bin, 1,2 mn. */
+function compactInt(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1_000_000) return `${fmtNum(v / 1_000_000, 2)} mn`;
+  if (a >= 10_000) return `${fmtNum(v / 1_000, 0)} bin`;
+  return fmtInt(v);
+}
+
 /**
  * Darboğaz analizi: her malzemenin mevcut stoğuyla (yalnız o malzeme dikkate
  * alınarak) kaç adet üretilebileceği. Kesikli çizgi istenen adettir; çizginin
@@ -23,6 +42,8 @@ export function BottleneckChart({ rows, requested }: { rows: BottleneckRow[]; re
   const height = Math.max(150, rows.length * 38 + 44);
   const data = rows.map((r) => ({ ...r, value: r.maxUnits }));
   const maxValue = Math.max(requested, ...data.map((d) => d.value));
+  // Küçük pay: istenen adet çizgisi ve etiketi eksenin tam ucuna düşüp kesilmesin.
+  const ticks = niceTicks(maxValue * 1.04);
   return (
     <div>
       <ChartFrame
@@ -34,24 +55,26 @@ export function BottleneckChart({ rows, requested }: { rows: BottleneckRow[]; re
         <BarChart data={data} layout="vertical" margin={{ top: 18, right: 24, bottom: 4, left: 4 }} barCategoryGap={8}>
           <XAxis
             type="number"
-            domain={[0, Math.ceil(maxValue * 1.08) || 1]}
+            domain={[0, ticks[ticks.length - 1]]}
+            ticks={ticks}
+            interval="preserveStartEnd"
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
             allowDecimals={false}
-            tickFormatter={(v: number) => fmtInt(v)}
+            tickFormatter={(v: number) => compactInt(v)}
           />
           <YAxis
             type="category"
             dataKey="label"
             width={130}
-            tick={{ ...AXIS_TICK, fill: "#495057" }}
+            tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: string) => (v.length > 19 ? `${v.slice(0, 18)}…` : v)}
           />
           <Tooltip
-            cursor={{ fill: "rgba(64,81,137,0.05)" }}
+            cursor={{ fill: CHART.grid }}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const p = payload[0].payload as (typeof data)[number];
@@ -127,7 +150,7 @@ export function CostShareDonut({ rows, total }: { rows: { name: string; valueTry
     <DonutChart
       data={slices}
       centerLabel="Toplam"
-      centerValue={fmtMoney(total, "TRY", 0)}
+      centerValue={total >= 1_000_000 ? fmtCompactMoney(total, "TRY") : fmtMoney(total, "TRY", 0)}
       format={(v) => fmtMoney(v, "TRY")}
       height={190}
       label="Tahmini üretim maliyetinin malzemelere göre dağılımı (TL)"

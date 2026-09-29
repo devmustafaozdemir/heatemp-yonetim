@@ -3,16 +3,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { StockStatusBadge } from "@/components/StockStatus";
-import { Badge, Card, EmptyState, ErrorState, PageHeader, ProgressBar, StatCard, TableWrap, buttonClass } from "@/components/ui";
+import { Badge, Card, EmptyState, ErrorState, PageHeader, ProgressBar, TableWrap, buttonClass } from "@/components/ui";
 import { Drawer } from "@/components/ui/dialog";
-import { ListToolbar } from "@/components/ui/ListToolbar";
 import { Pagination, SortTh } from "@/components/ui/list";
 import { requireMember } from "@/lib/auth";
 import { fmtInt, fmtMinutes, fmtMoney } from "@/lib/format";
 import { parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
 import { load } from "@/lib/query";
-import { ProductThumb, StatusMeter, fmtCostRange } from "./_components/bits";
+import { ProductThumb, StatTile, StatusMeter, fmtCostRange } from "./_components/bits";
+import type { SortOption } from "./_components/SortSelect";
 import { StockByProductChart, type StockBarRow } from "./_components/StockByProductChart";
+import { TabToolbar } from "./_components/TabToolbar";
 import { redirectIfPageOutOfRange } from "./_components/paging";
 import type { ProductListRow } from "./_components/types";
 import { createProduct } from "./actions";
@@ -22,6 +23,45 @@ export const metadata: Metadata = { title: "Ürünler ve BOM" };
 
 const BASE = "/urunler";
 const SORTABLE = ["code", "name", "variant_count", "default_sale_price", "unit_production_minutes", "total_remaining", "worst_severity"];
+/**
+ * Sıralama seçenekleri (her sıralanabilir sütun için iki yön). Adlar kısa tutulur: 390 px'te
+ * seçim kutusu yarım satıra sığar.
+ */
+const SORT_LABELS: Record<string, [asc: string, desc: string]> = {
+  name: ["Ad (A–Z)", "Ad (Z–A)"],
+  code: ["Kod (A–Z)", "Kod (Z–A)"],
+  worst_severity: ["Önce yeterli", "Önce kritik"],
+  total_remaining: ["En az stok", "En çok stok"],
+  default_sale_price: ["En düşük fiyat", "En yüksek fiyat"],
+  unit_production_minutes: ["En kısa süre", "En uzun süre"],
+  variant_count: ["En az varyant", "En çok varyant"],
+};
+/** Seçimde öne çıkan sıralamalar; başlıktan seçilen diğer bir sıralama da listeye eklenir. */
+const SORT_PRESETS = [
+  "name:asc",
+  "name:desc",
+  "code:asc",
+  "worst_severity:desc",
+  "total_remaining:desc",
+  "total_remaining:asc",
+  "default_sale_price:desc",
+  "default_sale_price:asc",
+  "unit_production_minutes:desc",
+  "unit_production_minutes:asc",
+  "variant_count:desc",
+];
+
+function sortOptions(sort: string | null, dir: "asc" | "desc"): SortOption[] {
+  const label = (v: string) => {
+    const [col, d] = v.split(":");
+    return SORT_LABELS[col]?.[d === "asc" ? 0 : 1] ?? v;
+  };
+  const values = [...SORT_PRESETS];
+  const current = `${sort}:${dir}`;
+  if (sort && SORT_LABELS[sort] && !values.includes(current)) values.push(current);
+  return values.map((v) => ({ value: v, label: label(v) }));
+}
+
 const STOCK_FILTER: Record<string, ProductListRow["worst_stock_status"]> = {
   kritik: "critical",
   "min-alti": "low",
@@ -46,6 +86,7 @@ type StatRow = Pick<
   | "heatemp_qty"
   | "mekonsis_qty"
   | "last_cost_usd_max"
+  | "worst_stock_status"
 >;
 
 function statusCount(r: ProductListRow) {
@@ -91,7 +132,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       ctx.supabase
         .from("v_product_list")
         .select(
-          "id, code, name, is_active, variant_count, active_variant_count, critical_variant_count, low_variant_count, below_target_variant_count, ok_variant_count, no_bom_variant_count, total_remaining, heatemp_qty, mekonsis_qty, last_cost_usd_max",
+          "id, code, name, is_active, variant_count, active_variant_count, critical_variant_count, low_variant_count, below_target_variant_count, ok_variant_count, no_bom_variant_count, total_remaining, heatemp_qty, mekonsis_qty, last_cost_usd_max, worst_stock_status",
         )
         .returns<StatRow[]>(),
     ),
@@ -112,6 +153,9 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     ok: sum(active, "ok_variant_count"),
   };
   const noBom = sum(active, "no_bom_variant_count");
+  // Kart bağlantıları ÜRÜN listesini açar; değer varyant sayısı olduğundan ürün sayısı ayrıca yazılır.
+  const criticalProducts = active.filter((p) => p.worst_stock_status === "critical").length;
+  const noBomProducts = active.filter((p) => p.no_bom_variant_count > 0).length;
   const withBatchCost = active.filter((p) => p.last_cost_usd_max !== null).length;
   const stockRows: StockBarRow[] = [...all]
     .filter((p) => p.total_remaining > 0)
@@ -153,201 +197,259 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         }
       />
 
-      {stats.error ? (
-        <Card className="mb-4">
-          <ErrorState message={stats.error} compact title="Özet yüklenemedi" />
-        </Card>
-      ) : (
-        <>
-          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Ürünler"
-              value={fmtInt(all.length)}
-              icon={Package}
-              tone="brand"
-              description={`${fmtInt(active.length)} aktif · ${fmtInt(all.length - active.length)} pasif`}
-            />
-            <StatCard
-              label="Aktif varyant"
-              value={fmtInt(activeVariants)}
-              unit={`/ ${fmtInt(variantTotal)}`}
-              icon={Layers}
-              tone="blue"
-              description="Aktif ürünlerin aktif varyantları"
-            />
-            <StatCard
-              label="Kritik stok"
-              scope="Güncel stok"
-              value={fmtInt(counts.critical)}
-              unit="varyant"
-              icon={AlertOctagon}
-              tone="red"
-              description={`Minimum altı ${fmtInt(counts.low)} · Hedef altı ${fmtInt(counts.below_target)}`}
-              href="/urunler?stok=kritik&durum=aktif"
-            />
-            <StatCard
-              label="Reçetesiz varyant"
-              value={fmtInt(noBom)}
-              unit="varyant"
-              icon={ListX}
-              tone="amber"
-              description="Tahmini maliyet ve simülasyon için reçete gerekir"
-              href="/urunler?recete=eksik&durum=aktif"
-            />
-          </div>
-
-          <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-            <Card title="Stok ve reçete durumu" description="Aktif ürünlerin aktif varyantları · güncel stok (Heatemp + Mekonsis)">
-              <StatusMeter counts={counts} />
-              <div className="mt-5 space-y-3 border-t border-line pt-4">
-                <div>
-                  <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
-                    <span className="text-ink-soft">Reçetesi tanımlı varyant</span>
-                    <span className="font-semibold text-ink tabular-nums">
-                      {fmtInt(activeVariants - noBom)} / {fmtInt(activeVariants)}
-                    </span>
-                  </div>
-                  <ProgressBar value={activeVariants - noBom} max={activeVariants} tone="teal" label="Reçetesi tanımlı aktif varyant oranı" />
-                </div>
-                <div>
-                  <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
-                    <span className="text-ink-soft">Gerçekleşmiş parti maliyeti olan ürün</span>
-                    <span className="font-semibold text-ink tabular-nums">
-                      {fmtInt(withBatchCost)} / {fmtInt(active.length)}
-                    </span>
-                  </div>
-                  <ProgressBar value={withBatchCost} max={active.length} tone="blue" label="Tamamlanmış üretim partisi olan aktif ürün oranı" />
-                </div>
-              </div>
-            </Card>
-            <Card
-              title="Ürün bazında mamul stok"
-              description={`En yüksek stoklu ${fmtInt(stockRows.length)} ürün · toplam ${fmtInt(stockTotal)} adet`}
-            >
-              <StockByProductChart data={stockRows} />
-            </Card>
-          </div>
-        </>
-      )}
-
-      <Card padded={false}>
-        <ListToolbar
-          basePath={BASE}
-          values={v}
-          total={res.count}
-          noun="ürün"
-          search={{ placeholder: "Kod, ad veya varyant kodu ara…" }}
-          filters={[
-            {
-              key: "durum",
-              label: "Durum",
-              options: [
-                { value: "aktif", label: "Aktif" },
-                { value: "pasif", label: "Pasif" },
-              ],
-            },
-            {
-              key: "stok",
-              label: "Stok durumu",
-              options: [
-                { value: "kritik", label: "Kritik" },
-                { value: "min-alti", label: "Minimum altı" },
-                { value: "hedef-alti", label: "Hedef altı" },
-                { value: "yeterli", label: "Yeterli" },
-              ],
-            },
-            {
-              key: "recete",
-              label: "Reçete",
-              options: [
-                { value: "eksik", label: "Reçetesiz varyantı olan" },
-                { value: "tam", label: "Tüm varyantların reçetesi var" },
-              ],
-            },
-          ]}
-        />
-        {res.error ? (
-          <ErrorState message={res.error} />
-        ) : rows.length === 0 ? (
-          <EmptyState title={filtered ? "Filtreye uyan ürün yok" : "Henüz ürün yok"}>
-            {filtered ? "Arama veya filtreleri değiştirin." : isAdmin ? "“Yeni ürün” düğmesiyle ilk ürünü ekleyin." : "Yönetici ürün eklediğinde burada listelenir."}
-          </EmptyState>
+      {/* Mobilde (640 px altı) liste özet kartlarından hemen sonra gelir; grafikler listenin altına iner. */}
+      <div className="flex flex-col gap-4">
+        {stats.error ? (
+          <Card className="order-1">
+            <ErrorState message={stats.error} compact title="Özet yüklenemedi" />
+          </Card>
         ) : (
           <>
-            {/* Geniş ekran: tablo */}
-            <TableWrap className="relative hidden xl:block">
-              <table className="table-base">
-                <thead>
-                  <tr>
-                    <SortTh label="Ürün" column="name" {...sortProps} />
-                    <SortTh label="Varyant" column="variant_count" {...sortProps} />
-                    <th className="num" title="Son gerçekleşmiş parti birim maliyeti ve güncel ortalama malzeme maliyetiyle tahmini reçete maliyeti (1 adet)">
-                      Maliyet (USD)
-                    </th>
-                    <SortTh label="Satış fiyatı" column="default_sale_price" align="right" title="Tanımlı varsayılan satış fiyatı" {...sortProps} />
-                    <SortTh label="Birim süre" column="unit_production_minutes" align="right" title="1 adet için üretim süresi" {...sortProps} />
-                    <SortTh label="Stok" column="total_remaining" align="right" title="Heatemp + Mekonsis rafı (adet)" {...sortProps} />
-                    <SortTh label="Stok durumu" column="worst_severity" title="En kötü durumdaki aktif varyant" {...sortProps} />
-                    <th aria-label="İşlemler" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((p) => (
-                    <tr key={p.id}>
-                      <td className="min-w-56">
-                        <div className="flex items-center gap-3">
-                          <ProductThumb path={p.image_path} size="md" />
-                          <div className="min-w-0">
-                            <Link href={`/urunler/${p.id}`} className="link">
-                              {p.name}
-                            </Link>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <span className="code text-ink-muted">{p.code}</span>
-                              {!p.is_active ? <Badge>Pasif</Badge> : null}
+            <div className="order-1 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+              <StatTile
+                label="Ürünler"
+                value={fmtInt(all.length)}
+                icon={Package}
+                tone="brand"
+                description={`${fmtInt(active.length)} aktif · ${fmtInt(all.length - active.length)} pasif`}
+              />
+              <StatTile
+                label="Aktif varyant"
+                value={fmtInt(activeVariants)}
+                unit={`/ ${fmtInt(variantTotal)}`}
+                icon={Layers}
+                tone="blue"
+                description="Aktif ürünlerin aktif varyantları"
+              />
+              <StatTile
+                label="Kritik stok"
+                scope="Güncel stok"
+                value={fmtInt(counts.critical)}
+                unit="varyant"
+                icon={AlertOctagon}
+                tone="red"
+                description={`${fmtInt(criticalProducts)} üründe · Minimum altı ${fmtInt(counts.low)} · Hedef altı ${fmtInt(counts.below_target)} varyant`}
+                href="/urunler?stok=kritik&durum=aktif"
+              />
+              <StatTile
+                label="Reçetesiz varyant"
+                value={fmtInt(noBom)}
+                unit="varyant"
+                icon={ListX}
+                tone="amber"
+                description={`${fmtInt(noBomProducts)} üründe · tahmini maliyet ve simülasyon için reçete gerekir`}
+                href="/urunler?recete=eksik&durum=aktif"
+              />
+            </div>
+
+            <div className="order-3 grid grid-cols-1 gap-4 sm:order-2 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+              <Card title="Stok ve reçete durumu" description="Aktif ürünlerin aktif varyantları · güncel stok (Heatemp + Mekonsis)">
+                <StatusMeter counts={counts} />
+                <div className="mt-5 space-y-3 border-t border-line pt-4">
+                  <div>
+                    <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
+                      <span className="text-ink-soft">Reçetesi tanımlı varyant</span>
+                      <span className="shrink-0 font-semibold whitespace-nowrap text-ink tabular-nums">
+                        {fmtInt(activeVariants - noBom)} / {fmtInt(activeVariants)}
+                      </span>
+                    </div>
+                    <ProgressBar value={activeVariants - noBom} max={activeVariants} tone="teal" label="Reçetesi tanımlı aktif varyant oranı" />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
+                      <span className="text-ink-soft">Gerçekleşmiş parti maliyeti olan ürün</span>
+                      <span className="shrink-0 font-semibold whitespace-nowrap text-ink tabular-nums">
+                        {fmtInt(withBatchCost)} / {fmtInt(active.length)}
+                      </span>
+                    </div>
+                    <ProgressBar value={withBatchCost} max={active.length} tone="blue" label="Tamamlanmış üretim partisi olan aktif ürün oranı" />
+                  </div>
+                </div>
+              </Card>
+              <Card
+                title="Ürün bazında mamul stok"
+                description={`En yüksek stoklu ${fmtInt(stockRows.length)} ürün · toplam ${fmtInt(stockTotal)} adet`}
+              >
+                <StockByProductChart data={stockRows} />
+              </Card>
+            </div>
+          </>
+        )}
+
+        <Card padded={false} className="order-2 sm:order-3">
+          {/* Dar ekranda iki sütunlu ızgara: Durum | Reçete, Stok durumu | Sıralama. */}
+          <TabToolbar
+            basePath={BASE}
+            values={v}
+            total={res.count}
+            noun="ürün"
+            search={{ placeholder: "Kod veya ad ara…" }}
+            filters={[
+              {
+                key: "durum",
+                label: "Durum",
+                options: [
+                  { value: "aktif", label: "Aktif" },
+                  { value: "pasif", label: "Pasif" },
+                ],
+              },
+              {
+                key: "recete",
+                label: "Reçete",
+                options: [
+                  { value: "eksik", label: "Reçetesi eksik" },
+                  { value: "tam", label: "Reçetesi tam" },
+                ],
+              },
+              {
+                key: "stok",
+                label: "Stok durumu",
+                allLabel: "Stok: tümü",
+                options: [
+                  { value: "kritik", label: "Kritik" },
+                  { value: "min-alti", label: "Minimum altı" },
+                  { value: "hedef-alti", label: "Hedef altı" },
+                  { value: "yeterli", label: "Yeterli" },
+                ],
+              },
+            ]}
+            sort={{ options: sortOptions(lp.sort, lp.dir), sort: lp.sort, dir: lp.dir }}
+          />
+          {res.error ? (
+            <ErrorState message={res.error} />
+          ) : rows.length === 0 ? (
+            <EmptyState title={filtered ? "Filtreye uyan ürün yok" : "Henüz ürün yok"}>
+              {filtered ? "Arama veya filtreleri değiştirin." : isAdmin ? "“Yeni ürün” düğmesiyle ilk ürünü ekleyin." : "Yönetici ürün eklediğinde burada listelenir."}
+            </EmptyState>
+          ) : (
+            <>
+              {/* Geniş ekran: tablo */}
+              <TableWrap className="relative hidden xl:block">
+                <table className="table-base">
+                  <thead>
+                    <tr>
+                      <SortTh label="Ürün" column="name" {...sortProps} />
+                      <SortTh label="Varyant" column="variant_count" {...sortProps} />
+                      <th className="num" title="Son gerçekleşmiş parti birim maliyeti ve güncel ortalama malzeme maliyetiyle tahmini reçete maliyeti (1 adet)">
+                        Maliyet (USD)
+                      </th>
+                      <SortTh
+                        label="Fiyat · süre"
+                        column="default_sale_price"
+                        align="right"
+                        title="Tanımlı varsayılan satış fiyatı (sıralama bu değere göre) ve 1 adet için birim üretim süresi"
+                        {...sortProps}
+                      />
+                      <SortTh label="Stok" column="total_remaining" align="right" title="Heatemp + Mekonsis rafı (adet)" {...sortProps} />
+                      <SortTh label="Stok durumu" column="worst_severity" title="En kötü durumdaki aktif varyant" {...sortProps} />
+                      <th aria-label="İşlemler" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((p) => (
+                      <tr key={p.id}>
+                        <td className="min-w-60">
+                          <div className="flex items-center gap-3">
+                            <ProductThumb path={p.image_path} size="md" />
+                            <div className="min-w-0">
+                              <Link href={`/urunler/${p.id}`} className="link">
+                                {p.name}
+                              </Link>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                <span className="code whitespace-nowrap text-ink-muted">{p.code}</span>
+                                {!p.is_active ? <Badge>Pasif</Badge> : null}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="w-44 max-w-44 min-w-36">
-                        <div className="font-semibold text-ink tabular-nums">{fmtInt(p.variant_count)}</div>
-                        <div className="line-clamp-2 text-xs text-ink-muted" title={p.variant_codes ?? undefined}>
-                          {p.variant_codes}
-                        </div>
-                        {p.no_bom_variant_count > 0 ? (
-                          <div className="mt-0.5 flex items-center gap-1 text-xs font-medium text-amber-700">
-                            <AlertTriangle className="size-3.5" aria-hidden />
-                            {fmtInt(p.no_bom_variant_count)} reçetesiz
+                        </td>
+                        <td className="w-40 max-w-40 min-w-32">
+                          <div className="font-semibold text-ink tabular-nums">{fmtInt(p.variant_count)}</div>
+                          <div className="line-clamp-2 text-xs text-ink-muted" title={p.variant_codes ?? undefined}>
+                            {p.variant_codes}
                           </div>
-                        ) : null}
-                      </td>
-                      <td className="num">
-                        <dl className="ml-auto grid w-max grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-right">
-                          <dt className="text-[11px] text-ink-muted">Son parti</dt>
-                          <dd className="font-medium text-ink">{fmtCostRange(p.last_cost_usd_min, p.last_cost_usd_max, "USD")}</dd>
-                          <dt className="text-[11px] text-ink-muted">Tahmini reçete</dt>
-                          <dd>{fmtCostRange(p.est_cost_usd_min, p.est_cost_usd_max, "USD")}</dd>
-                        </dl>
-                      </td>
-                      <td className="num">
-                        {fmtMoney(p.default_sale_price, p.default_currency)}
-                        {p.price_override_count > 0 ? (
-                          <div className="text-xs text-ink-muted">{fmtInt(p.price_override_count)} varyantta özel</div>
-                        ) : null}
-                      </td>
-                      <td className="num">
-                        {fmtMinutes(p.unit_production_minutes)}
-                        {p.minutes_override_count > 0 ? (
-                          <div className="text-xs text-ink-muted">{fmtInt(p.minutes_override_count)} varyantta özel</div>
-                        ) : null}
-                      </td>
-                      <td className="num">
-                        <span className="font-semibold text-ink">{fmtInt(p.total_remaining)}</span>
-                        <div className="text-[11px] leading-4 text-ink-muted">Heatemp {fmtInt(p.heatemp_qty)}</div>
-                        <div className="text-[11px] leading-4 text-ink-muted">Mekonsis {fmtInt(p.mekonsis_qty)}</div>
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {p.worst_stock_status ? (
-                          <>
+                          {p.no_bom_variant_count > 0 ? (
+                            <div className="mt-0.5 flex items-center gap-1 text-xs font-medium text-amber-700">
+                              <AlertTriangle className="size-3.5" aria-hidden />
+                              {fmtInt(p.no_bom_variant_count)} reçetesiz
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="num">
+                          {p.last_cost_usd_max === null && p.est_cost_usd_max === null ? (
+                            // Hiç maliyet verisi yoksa iki etiketli "—" satırı yerine tek bir "—".
+                            <span className="text-ink-muted" title="Tamamlanmış üretim partisi ve reçete yok; maliyet hesaplanamaz">
+                              —
+                            </span>
+                          ) : (
+                            <dl className="ml-auto grid w-max grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-right">
+                              <dt className="text-[11px] text-ink-muted">Son parti</dt>
+                              <dd className="font-medium text-ink">{fmtCostRange(p.last_cost_usd_min, p.last_cost_usd_max, "USD")}</dd>
+                              <dt className="text-[11px] text-ink-muted">Tahmini reçete</dt>
+                              <dd>{fmtCostRange(p.est_cost_usd_min, p.est_cost_usd_max, "USD")}</dd>
+                            </dl>
+                          )}
+                        </td>
+                        <td className="num">
+                          <div className="font-medium text-ink">{fmtMoney(p.default_sale_price, p.default_currency)}</div>
+                          {p.price_override_count > 0 ? (
+                            <div className="text-[11px] leading-4 whitespace-normal text-ink-muted">{fmtInt(p.price_override_count)} varyantta özel fiyat</div>
+                          ) : null}
+                          <div className="mt-0.5 text-xs whitespace-nowrap text-ink-soft" title="1 adet için birim üretim süresi">
+                            {fmtMinutes(p.unit_production_minutes)} / adet
+                          </div>
+                          {p.minutes_override_count > 0 ? (
+                            <div className="text-[11px] leading-4 whitespace-normal text-ink-muted">{fmtInt(p.minutes_override_count)} varyantta özel süre</div>
+                          ) : null}
+                        </td>
+                        <td className="num">
+                          <span className="font-semibold text-ink">{fmtInt(p.total_remaining)}</span>
+                          <div className="text-[11px] leading-4 text-ink-muted">Heatemp {fmtInt(p.heatemp_qty)}</div>
+                          <div className="text-[11px] leading-4 text-ink-muted">Mekonsis {fmtInt(p.mekonsis_qty)}</div>
+                        </td>
+                        <td className="w-px whitespace-nowrap">
+                          {p.worst_stock_status ? (
+                            <>
+                              <StockStatusBadge
+                                row={{
+                                  stock_status: p.worst_stock_status,
+                                  total_remaining: p.worst_total_remaining ?? 0,
+                                  critical_stock: p.worst_critical_stock ?? 0,
+                                  min_stock: p.worst_min_stock ?? 0,
+                                  target_stock: p.worst_target_stock ?? 0,
+                                }}
+                              />
+                              {p.active_variant_count > 1 ? (
+                                <div className="mt-0.5 text-xs text-ink-muted">
+                                  {fmtInt(statusCount(p))}/{fmtInt(p.active_variant_count)} varyant
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-xs text-ink-muted">Aktif varyant yok</span>
+                          )}
+                        </td>
+                        <td className="w-px text-right whitespace-nowrap">
+                          <RowActions id={p.id} name={p.name} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
+
+              {/* Tablet ve mobil: kart listesi */}
+              <ul className="-mb-px grid grid-cols-1 sm:grid-cols-2 xl:hidden">
+                {rows.map((p) => (
+                  <li key={p.id} className="min-w-0 border-b border-line px-4 py-3.5 sm:odd:border-r">
+                    <div className="flex items-start gap-3">
+                      <ProductThumb path={p.image_path} size="md" />
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/urunler/${p.id}`} className="link break-words">
+                          {p.name}
+                        </Link>
+                        <div className="code mt-0.5 text-ink-muted">{p.code}</div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {p.worst_stock_status ? (
                             <StockStatusBadge
                               row={{
                                 stock_status: p.worst_stock_status,
@@ -357,96 +459,56 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                                 target_stock: p.worst_target_stock ?? 0,
                               }}
                             />
-                            {p.active_variant_count > 1 ? (
-                              <div className="mt-0.5 text-xs text-ink-muted">
-                                {fmtInt(statusCount(p))}/{fmtInt(p.active_variant_count)} varyant
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <span className="text-xs text-ink-muted">Aktif varyant yok</span>
-                        )}
-                      </td>
-                      <td className="text-right whitespace-nowrap">
+                          ) : null}
+                          {p.is_active ? <Badge tone="green">Aktif</Badge> : <Badge>Pasif</Badge>}
+                          {p.no_bom_variant_count > 0 ? (
+                            <Badge tone="amber" icon={AlertTriangle}>
+                              {fmtInt(p.no_bom_variant_count)} reçetesiz
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="-mt-1 -mr-2 shrink-0">
                         <RowActions id={p.id} name={p.name} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
-
-            {/* Tablet ve mobil: kart listesi */}
-            <ul className="-mb-px grid grid-cols-1 sm:grid-cols-2 xl:hidden">
-              {rows.map((p) => (
-                <li key={p.id} className="min-w-0 border-b border-line px-4 py-3.5 sm:odd:border-r">
-                  <div className="flex items-start gap-3">
-                    <ProductThumb path={p.image_path} size="md" />
-                    <div className="min-w-0 flex-1">
-                      <Link href={`/urunler/${p.id}`} className="link break-words">
-                        {p.name}
-                      </Link>
-                      <div className="code mt-0.5 text-ink-muted">{p.code}</div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {p.worst_stock_status ? (
-                          <StockStatusBadge
-                            row={{
-                              stock_status: p.worst_stock_status,
-                              total_remaining: p.worst_total_remaining ?? 0,
-                              critical_stock: p.worst_critical_stock ?? 0,
-                              min_stock: p.worst_min_stock ?? 0,
-                              target_stock: p.worst_target_stock ?? 0,
-                            }}
-                          />
-                        ) : null}
-                        {p.is_active ? <Badge tone="green">Aktif</Badge> : <Badge>Pasif</Badge>}
-                        {p.no_bom_variant_count > 0 ? (
-                          <Badge tone="amber" icon={AlertTriangle}>
-                            {fmtInt(p.no_bom_variant_count)} reçetesiz
-                          </Badge>
-                        ) : null}
                       </div>
                     </div>
-                    <div className="-mt-1 -mr-2 shrink-0">
-                      <RowActions id={p.id} name={p.name} />
-                    </div>
-                  </div>
-                  <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2.5 text-[13px]">
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Stok</dt>
-                      <dd className="font-semibold text-ink tabular-nums">{fmtInt(p.total_remaining)} adet</dd>
-                      <dd className="text-[11px] text-ink-muted tabular-nums">
-                        <abbr title="Heatemp rafı" className="no-underline">H</abbr> {fmtInt(p.heatemp_qty)} · <abbr title="Mekonsis rafı" className="no-underline">M</abbr> {fmtInt(p.mekonsis_qty)}
-                      </dd>
-                    </div>
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Satış fiyatı</dt>
-                      <dd className="tabular-nums">{fmtMoney(p.default_sale_price, p.default_currency)}</dd>
-                    </div>
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Birim süre</dt>
-                      <dd className="tabular-nums">{fmtMinutes(p.unit_production_minutes)}</dd>
-                    </div>
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Varyant</dt>
-                      <dd className="tabular-nums">{fmtInt(p.variant_count)}</dd>
-                    </div>
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Son parti</dt>
-                      <dd className="tabular-nums">{fmtCostRange(p.last_cost_usd_min, p.last_cost_usd_max, "USD")}</dd>
-                    </div>
-                    <div className="min-w-0">
-                      <dt className="text-xs text-ink-muted">Tahmini reçete</dt>
-                      <dd className="tabular-nums">{fmtCostRange(p.est_cost_usd_min, p.est_cost_usd_max, "USD")}</dd>
-                    </div>
-                  </dl>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {res.count ? <Pagination basePath={BASE} values={v} page={lp.page} pageSize={lp.pageSize} total={res.count} noun="ürün" /> : null}
-      </Card>
+                    <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2.5 text-[13px]">
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Stok</dt>
+                        <dd className="font-semibold text-ink tabular-nums">{fmtInt(p.total_remaining)} adet</dd>
+                        <dd className="text-[11px] text-ink-muted tabular-nums">
+                          <abbr title="Heatemp rafı" className="no-underline">H</abbr> {fmtInt(p.heatemp_qty)} · <abbr title="Mekonsis rafı" className="no-underline">M</abbr> {fmtInt(p.mekonsis_qty)}
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Satış fiyatı</dt>
+                        <dd className="tabular-nums">{fmtMoney(p.default_sale_price, p.default_currency)}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Birim süre</dt>
+                        <dd className="tabular-nums">{fmtMinutes(p.unit_production_minutes)}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Varyant</dt>
+                        <dd className="tabular-nums">{fmtInt(p.variant_count)}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Son parti</dt>
+                        <dd className="tabular-nums">{fmtCostRange(p.last_cost_usd_min, p.last_cost_usd_max, "USD")}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Tahmini reçete</dt>
+                        <dd className="tabular-nums">{fmtCostRange(p.est_cost_usd_min, p.est_cost_usd_max, "USD")}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {res.count ? <Pagination basePath={BASE} values={v} page={lp.page} pageSize={lp.pageSize} total={res.count} noun="ürün" /> : null}
+        </Card>
+      </div>
     </>
   );
 }

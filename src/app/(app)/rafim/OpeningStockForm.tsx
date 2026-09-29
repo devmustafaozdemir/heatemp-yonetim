@@ -41,8 +41,8 @@ export function OpeningStockForm({ variants, today }: { variants: { id: string; 
       <div className="space-y-5">
         <Alert tone="warning" title="Yalnız sistem öncesi stok için">
           Uygulamaya geçerken eldeki mamulü gerçek birim maliyetiyle bir kez girin. Üretim sayılmaz, hammadde tüketmez ve maliyet
-          karşılaştırmasına katılmaz. Mekonsis&apos;te duran mevcut stok için önce burada açılış girip ardından aynı tarihli
-          teslimat kaydedin. Excel&apos;den otomatik aktarım yapılmaz.
+          karşılaştırmasına katılmaz. Mekonsis&apos;te duran mevcut stok için önce burada açılış girip ardından aynı tarihli teslimat
+          kaydedin. Excel&apos;den otomatik aktarım yapılmaz.
         </Alert>
 
         <FormSection title="Ürün ve miktar">
@@ -84,7 +84,10 @@ export function OpeningStockForm({ variants, today }: { variants: { id: string; 
           </div>
         </FormSection>
 
-        <FormSection title="Gerçek birim maliyet" description="Kur, açılış tarihine göre sabitlenir; TL ve USD değerleri bu kurla kaydedilir.">
+        <FormSection
+          title="Gerçek birim maliyet"
+          description="Kur, açılış tarihine göre sabitlenir; TL ve USD değerleri bu kurla kaydedilir."
+        >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField name="unit_cost" label="Birim maliyet" required>
               <input

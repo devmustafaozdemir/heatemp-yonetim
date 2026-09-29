@@ -12,8 +12,8 @@ export interface MonthlyFlowPoint {
 }
 
 const SERIES = [
-  { key: "purchase", label: "Alış (giriş)", color: CHART.blue },
-  { key: "consume", label: "Üretim tüketimi (net)", color: CHART.amber },
+  { key: "purchase", label: "Alış", color: CHART.blue },
+  { key: "consume", label: "Tüketim", color: CHART.amber },
   { key: "writeOff", label: "Fire / sayım", color: CHART.red },
 ] as const;
 
@@ -76,7 +76,7 @@ export function MonthlyFlowChart({ data }: { data: MonthlyFlowPoint[] }) {
               {s.label}
             </span>
           ))}
-          <span>TL · işlem günü değeri</span>
+          <span>TL · işlem günü değeri · tüketim: üretime çıkan, iptal iadeleri düşülmüş</span>
         </div>
       ) : null}
     </div>

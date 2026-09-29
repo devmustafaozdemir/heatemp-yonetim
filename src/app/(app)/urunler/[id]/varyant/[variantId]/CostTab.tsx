@@ -1,10 +1,10 @@
 import { Clock, Factory, FlaskConical, Tag } from "lucide-react";
-import { Card, ErrorState, StatCard } from "@/components/ui";
+import { Card, ErrorState } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
 import { fmtDate, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { parseListParams, type SearchParams } from "@/lib/list-params";
-import { BATCH_SORTABLE, BatchHistoryCard, OpeningBatchesCard, loadCostPoints } from "../../../_components/Batches";
-import { priceMinusEstimate } from "../../../_components/bits";
+import { BATCH_SORTABLE, BatchHistoryCard, NoProductionCard, OpeningBatchesCard, loadCostPoints } from "../../../_components/Batches";
+import { StatTile, priceMinusEstimate } from "../../../_components/bits";
 import { CostHistoryChart } from "../../../_components/CostHistoryChart";
 import type { VariantPageData } from "./types";
 
@@ -19,15 +19,15 @@ export async function VariantCostTab({ ctx, data, sp }: { ctx: AuthContext; data
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatTile
           label="Tanımlı satış fiyatı"
           value={fmtMoney(e.sale_price, e.currency)}
           icon={Tag}
           tone="blue"
           description={e.price_overridden ? "Varyanta özel fiyat" : "Ürün varsayılanından (miras)"}
         />
-        <StatCard
+        <StatTile
           label="Tahmini reçete maliyeti"
           value={sim?.has_bom ? fmtUnitMoney(sim.unit_cost_usd, "USD") : "—"}
           icon={FlaskConical}
@@ -38,17 +38,21 @@ export async function VariantCostTab({ ctx, data, sp }: { ctx: AuthContext; data
               : data.simError ?? "Reçete tanımlı değil"
           }
         />
-        <StatCard
+        <StatTile
           label="Gerçekleşmiş parti maliyeti"
           value={o?.last_batch_no ? fmtUnitMoney(o.last_unit_cost_usd, "USD") : "—"}
           icon={Factory}
           tone="teal"
           delta={o?.last_batch_no ? { pct: o.unit_cost_usd_change_pct, label: "önceki partiye göre", invert: true } : undefined}
           description={
-            o?.last_batch_no ? `${o.last_batch_no} · ${fmtDate(o.last_completed_at)} · ${fmtUnitMoney(o.last_unit_cost_try, "TRY")}` : "Tamamlanmış üretim partisi yok"
+            o?.last_batch_no
+              ? `${o.last_batch_no} · ${fmtDate(o.last_completed_at)} · ${fmtUnitMoney(o.last_unit_cost_try, "TRY")}`
+              : data.overviewError
+                ? `Parti maliyeti yüklenemedi: ${data.overviewError}`
+                : "Tamamlanmış üretim partisi yok"
           }
         />
-        <StatCard
+        <StatTile
           label="Birim üretim süresi"
           value={fmtMinutes(e.unit_production_minutes)}
           icon={Clock}
@@ -57,21 +61,34 @@ export async function VariantCostTab({ ctx, data, sp }: { ctx: AuthContext; data
         />
       </div>
 
-      <Card
-        title="Gerçekleşmiş parti birim maliyeti"
-        description={`Tamamlanmış üretim partileri (son 120). Kesikli çizgi: güncel tahmini reçete maliyeti. ${product.name} — ${variant.name}`}
-      >
-        {points.error ? (
-          <ErrorState message={points.error} compact />
-        ) : (
-          <CostHistoryChart
-            points={points.data ?? []}
-            estimate={sim?.has_bom ? { usd: sim.unit_cost_usd, try: sim.unit_cost_try } : null}
+      {!points.error && (points.data ?? []).length === 0 ? (
+        // Tamamlanmış üretim yoksa grafik ve parti tablosu yerine tek bir boş durum kartı.
+        <NoProductionCard />
+      ) : (
+        <>
+          <Card
+            title="Gerçekleşmiş parti birim maliyeti"
+            description={`Tamamlanmış üretim partileri (son 120). Kesikli çizgi: güncel tahmini reçete maliyeti. ${product.name} — ${variant.name}`}
+          >
+            {points.error ? (
+              <ErrorState message={points.error} compact />
+            ) : (
+              <CostHistoryChart
+                points={points.data ?? []}
+                estimate={sim?.has_bom ? { usd: sim.unit_cost_usd, try: sim.unit_cost_try } : null}
+              />
+            )}
+          </Card>
+          <BatchHistoryCard
+            ctx={ctx}
+            scope={scope}
+            basePath={`/urunler/${product.id}/varyant/${variant.id}`}
+            lp={lp}
+            keep={{ sekme: "maliyet" }}
+            showVariant={false}
           />
-        )}
-      </Card>
-
-      <BatchHistoryCard ctx={ctx} scope={scope} basePath={`/urunler/${product.id}/varyant/${variant.id}`} lp={lp} keep={{ sekme: "maliyet" }} showVariant={false} />
+        </>
+      )}
       <OpeningBatchesCard ctx={ctx} scope={scope} showVariant={false} />
     </div>
   );

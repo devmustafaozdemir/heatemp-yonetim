@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRightLeft } from "lucide-react";
 import { useState } from "react";
 import { ActionForm, FieldError, FormField, SubmitButton } from "@/components/forms";
 import { FxRateField } from "@/components/FxRateField";
@@ -16,16 +17,19 @@ export function ConvertForm({ quoteId, today, disabled }: { quoteId: string; tod
     >
       <input type="hidden" name="quote_id" value={quoteId} />
       <div className="space-y-3">
-        <FormField name="sold_on" label="Satış tarihi *">
-          <input className="input" type="date" name="sold_on" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
+        <FormField name="sold_on" label="Satış tarihi" required hint="Gelir bu tarihin kuruyla TL'ye çevrilir ve kur satışa sabitlenir.">
+          <input className="input" type="date" name="sold_on" value={date} max={today} onChange={(e) => setDate(e.target.value)} required aria-required />
         </FormField>
         <div>
           <FxRateField date={date} canManual onChange={setFx} />
           <FieldError name="fx_rate_id" />
         </div>
       </div>
-      <div className="mt-3">
-        <SubmitButton disabled={disabled || !fx}>Satışa Dönüştür</SubmitButton>
+      <div className="mt-4">
+        <SubmitButton variant="success" disabled={disabled || !fx}>
+          <ArrowRightLeft aria-hidden />
+          Satışa Dönüştür
+        </SubmitButton>
       </div>
     </ActionForm>
   );

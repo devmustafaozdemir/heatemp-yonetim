@@ -1,4 +1,4 @@
-import { Calculator } from "lucide-react";
+import { AlertCircle, Calculator } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { StockStatusBadge } from "@/components/StockStatus";
@@ -11,7 +11,8 @@ import { first, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { Product, Simulation, VariantOverview, VariantView, ProductVariant } from "@/lib/types";
-import { KpiStrip, ProductThumb } from "../../../_components/bits";
+import { KpiStrip, ProductThumb, ShelfSplit } from "../../../_components/bits";
+import { TabLabel } from "../../../_components/TabLabel";
 import { VariantBomTab } from "./BomTab";
 import { VariantCostTab } from "./CostTab";
 import { VariantGeneralTab } from "./GeneralTab";
@@ -26,16 +27,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: data?.display_name ?? "Varyant" };
 }
 
+/** short: dar ekranda (640 px altı) gösterilen kısa ad. */
 const TABS = [
-  { key: "genel", label: "Genel" },
-  { key: "bom", label: "BOM / reçete" },
-  { key: "maliyet", label: "Maliyet" },
-  { key: "stok", label: "Stok ve hareketler" },
+  { key: "genel", label: "Genel", short: "Genel" },
+  { key: "bom", label: "BOM / reçete", short: "BOM" },
+  { key: "maliyet", label: "Maliyet", short: "Maliyet" },
+  { key: "stok", label: "Stok ve hareketler", short: "Stok" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 /** Varyant sayfası reçete düzenleme içindir: sekme verilmezse BOM / reçete açılır. */
 const DEFAULT_TAB: TabKey = "bom";
-
 
 export default async function VariantPage({
   params,
@@ -87,36 +88,47 @@ export default async function VariantPage({
         ]}
         meta={
           <>
+            <span className="code rounded bg-canvas px-1.5 py-0.5 text-ink-soft" title="Varyant kodu">
+              {effective.variant_code}
+            </span>
             {effective.is_active ? (
               <Badge tone="green">Aktif</Badge>
             ) : (
               <Badge>{effective.variant_is_active ? "Ürün pasif" : "Pasif"}</Badge>
             )}
-            {o ? <StockStatusBadge row={o} /> : null}
+            {o ? (
+              <StockStatusBadge row={o} />
+            ) : data.overviewError ? (
+              <Badge tone="red" icon={AlertCircle} title={data.overviewError}>
+                Stok durumu yüklenemedi
+              </Badge>
+            ) : null}
           </>
         }
         actions={
-          <ButtonLink href={`/simulasyon?varyant=${variantId}&adet=1`} variant="secondary">
-            <Calculator aria-hidden />
-            Üretim simülasyonu
-          </ButtonLink>
+          // Reçetesiz varyantta simülasyon hesaplanamaz; düğme yalnız reçete varken (veya
+          // reçete bilgisi alınamadığında) gösterilir.
+          sim?.has_bom !== false ? (
+            <ButtonLink href={`/simulasyon?varyant=${variantId}&adet=1`} variant="secondary">
+              <Calculator aria-hidden />
+              Üretim simülasyonu
+            </ButtonLink>
+          ) : null
         }
       />
 
       <Card padded={false} className="mb-4">
         <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-5">
-          <div className="flex items-center gap-3 sm:block">
+          {/* Görsel yoksa mobilde yer tutucu gösterilmez (varyant kodu başlıkta). */}
+          <div className={product.image_path ? "shrink-0" : "hidden shrink-0 sm:block"}>
             <ProductThumb path={product.image_path} size="xl" />
-            <div className="sm:hidden">
-              <div className="code text-ink-muted">{effective.variant_code}</div>
-            </div>
           </div>
           <KpiStrip
             items={[
               {
                 label: "Toplam stok",
                 value: o ? `${fmtInt(o.total_remaining)} adet` : "—",
-                sub: o ? `Heatemp ${fmtInt(o.heatemp_qty)} · Mekonsis ${fmtInt(o.mekonsis_qty)}` : "Stok özeti yüklenemedi",
+                sub: o ? <ShelfSplit heatemp={o.heatemp_qty} mekonsis={o.mekonsis_qty} /> : data.overviewError ? "Stok özeti yüklenemedi" : "Stok kaydı yok",
               },
               {
                 label: "Stok eşikleri",
@@ -136,7 +148,12 @@ export default async function VariantPage({
               {
                 label: "Gerçekleşmiş parti maliyeti",
                 value: o?.last_batch_no ? fmtUnitMoney(o.last_unit_cost_usd, "USD") : "—",
-                sub: o?.last_batch_no ? `${o.last_batch_no} · ${fmtDate(o.last_completed_at)}` : "Tamamlanmış üretim yok",
+                // Hata ≠ boş: özet yüklenemediyse "üretim yok" denmez.
+                sub: o?.last_batch_no
+                  ? `${o.last_batch_no} · ${fmtDate(o.last_completed_at)}`
+                  : data.overviewError
+                    ? "Maliyet özeti yüklenemedi"
+                    : "Tamamlanmış üretim yok",
               },
               {
                 label: "Birim üretim süresi",
@@ -146,14 +163,13 @@ export default async function VariantPage({
             ]}
           />
         </div>
-        <div className="border-t border-line px-2">
+        <div className="border-t border-line sm:px-2">
           <LinkTabs
             active={tab}
             tabs={TABS.map((t) => ({
               key: t.key,
-              label: t.label,
+              label: <TabLabel label={t.label} short={t.short} count={t.key === "bom" && sim ? sim.lines.length : undefined} active={t.key === tab} />,
               href: t.key === DEFAULT_TAB ? base : `${base}?sekme=${t.key}`,
-              count: t.key === "bom" && sim ? sim.lines.length : undefined,
             }))}
           />
         </div>

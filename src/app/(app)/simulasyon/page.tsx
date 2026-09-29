@@ -46,7 +46,18 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
   const isAdmin = ctx.role === "admin";
   const rawVariant = first(sp.varyant);
   const variantId = isUuid(rawVariant) ? rawVariant : null;
-  const qty = Math.min(MAX_QTY, Math.max(1, Math.floor(Number(first(sp.adet)) || 1)));
+  const rawQty = first(sp.adet);
+  const parsedQty = Math.floor(Number(rawQty));
+  const qty = Number.isFinite(parsedQty) && parsedQty >= 1 ? Math.min(MAX_QTY, parsedQty) : 1;
+  // URL'deki adet değiştirildiyse (üst sınır veya geçersiz değer) sessizce değil, açıkça bildirilir.
+  const qtyNote =
+    rawQty === ""
+      ? null
+      : Number.isFinite(parsedQty) && parsedQty > MAX_QTY
+        ? `İstenen adet (${fmtInt(parsedQty)}) üst sınırı aşıyor; hesap en fazla ${fmtInt(MAX_QTY)} adet için yapıldı.`
+        : !Number.isFinite(parsedQty) || parsedQty < 1
+          ? `Adresteki adet (“${rawQty.slice(0, 20)}”) geçersiz; hesap 1 adet için yapıldı.`
+          : null;
   const today = todayTr();
 
   const [variantsRes, recipeRes, simRes, fxRes] = await Promise.all([
@@ -83,7 +94,7 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
     <>
       <PageHeader
         title="Üretim simülasyonu"
-        description="Simülasyon stok düşürmez. Seçilen adet için gereken, mevcut ve eksik malzemeyi, maksimum üretilebilir adedi, tahmini maliyeti ve süreyi gösterir. Stok yeterliyse üretimi buradan başlatabilirsiniz."
+        description="Simülasyon stok düşürmez. Seçilen adet için gereken, mevcut ve eksik malzemeyi, stokla en fazla kaç adet yapılabileceğini, tahmini maliyeti ve süreyi gösterir. Stok yeterliyse üretimi buradan başlatabilirsiniz."
         actions={
           <ButtonLink href="/uretim" variant="secondary">
             <Layers aria-hidden />
@@ -103,10 +114,29 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
           {variantsRes.error ? (
             <ErrorState message={variantsRes.error} compact title="Ürünler yüklenemedi" />
           ) : variants.length === 0 ? (
-            <EmptyState title="Önce ürün ve reçete tanımlayın" compact action={<ButtonLink href="/urunler" size="sm">Ürünlere git</ButtonLink>} />
+            <EmptyState
+              title="Önce ürün ve reçete tanımlayın"
+              compact
+              action={
+                <ButtonLink href="/urunler" size="sm">
+                  Ürünlere git
+                </ButtonLink>
+              }
+            />
           ) : (
-            <SimulationPicker key={`${variantId ?? ""}-${qty}`} variants={variants} initialVariant={variantId} initialQty={qty} />
+            <SimulationPicker
+              key={`${variantId ?? ""}-${qty}`}
+              variants={variants}
+              initialVariant={variantId}
+              initialQty={qty}
+              maxQty={MAX_QTY}
+            />
           )}
+          {qtyNote ? (
+            <Alert tone="warning" className="mt-3">
+              {qtyNote}
+            </Alert>
+          ) : null}
           {selected && !selected.is_active ? (
             <Alert tone="warning" className="mt-3">
               Bu varyant veya ürünü pasif; simülasyon yapılabilir ama üretim başlatılamaz.
@@ -114,12 +144,13 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
           ) : null}
         </Card>
 
-        {/* 2 · Hesap özeti (masaüstünde sağ sütun) */}
-        <div className="min-w-0 xl:col-start-2 xl:row-span-3 xl:row-start-1">
+        {/* 2 · Hesap özeti (masaüstünde sağ sütun). Seçim yokken boş özet yalnız masaüstünde görünür;
+            mobil/tablette "Reçetesi tanımlı varyantlar" seçimin hemen altına gelir. */}
+        <div className={cx("min-w-0 xl:col-start-2 xl:row-span-3 xl:row-start-1", !variantId && "hidden xl:block")}>
           {!variantId ? (
             <Card title="Hesap özeti" icon={ClipboardList}>
               <EmptyState title="Henüz hesap yok" icon={Calculator} compact>
-                Ürün, varyant ve adet seçip “Hesapla”ya basın. Maksimum üretilebilir adet, maliyet ve süre burada görünür.
+                Ürün, varyant ve adet seçip “Hesapla”ya basın. Üretilebilecek en yüksek adet, maliyet ve süre burada görünür.
               </EmptyState>
             </Card>
           ) : simRes?.error ? (
@@ -127,7 +158,7 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
               <ErrorState message={simRes.error} compact title="Simülasyon hesaplanamadı" />
             </Card>
           ) : sim ? (
-            <SummaryCard sim={sim} fx={fxRes.fx} fxError={fxRes.error} productId={selected?.product_id ?? null} />
+            <SummaryCard sim={sim} fx={fxRes.fx} fxError={fxRes.error} productId={selected?.product_id ?? null} isAdmin={isAdmin} />
           ) : null}
         </div>
 
@@ -139,14 +170,20 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
                 Üretim başlatmak için yönetici yetkisi gerekir.
               </Alert>
             ) : (
-              <StartProductionForm variantId={sim.variant.id} quantity={sim.quantity} today={today} blockedReason={blockedReason(sim)} />
+              <StartProductionForm
+                variantId={sim.variant.id}
+                quantity={sim.quantity}
+                today={today}
+                blockedReason={blockedReason(sim)}
+                initialFx={fxRes.fx?.is_valid ? fxRes.fx : null}
+              />
             )}
           </Card>
         ) : null}
 
         {/* 4 · Malzeme tablosu */}
         {sim ? (
-          <MaterialsCard sim={sim} productId={selected?.product_id ?? null} />
+          <MaterialsCard sim={sim} productId={selected?.product_id ?? null} isAdmin={isAdmin} />
         ) : !variantId ? (
           <RecipeListCard variants={variants} recipes={recipeRes.data} error={recipeRes.error} />
         ) : null}
@@ -154,7 +191,11 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
         {/* 5 · Grafikler (tam genişlik) */}
         {sim && sim.has_bom && sim.lines.length > 0 ? (
           <div className="grid min-w-0 gap-4 xl:col-span-2 xl:row-start-4 xl:grid-cols-2">
-            <Card title="Darboğaz analizi" description="Her malzemenin mevcut stoğuyla en fazla kaç adet üretilebileceği" icon={AlertOctagon}>
+            <Card
+              title="Darboğaz analizi"
+              description="Her malzemenin mevcut stoğuyla en fazla kaç adet üretilebileceği"
+              icon={AlertOctagon}
+            >
               <BottleneckChart
                 requested={sim.quantity}
                 rows={sim.lines.map((l) => ({
@@ -170,7 +211,11 @@ export default async function SimulationPage({ searchParams }: { searchParams: P
               {sim.total_cost_try && Number(sim.total_cost_try) > 0 ? (
                 <CostShareDonut
                   total={Number(sim.total_cost_try)}
-                  rows={sim.lines.map((l) => ({ name: l.name, valueTry: Number(l.line_cost_try ?? 0), valueUsd: Number(l.line_cost_usd ?? 0) }))}
+                  rows={sim.lines.map((l) => ({
+                    name: l.name,
+                    valueTry: Number(l.line_cost_try ?? 0),
+                    valueUsd: Number(l.line_cost_usd ?? 0),
+                  }))}
                 />
               ) : (
                 <EmptyState title="Maliyet hesaplanamadı" compact>
@@ -211,11 +256,13 @@ function SummaryCard({
   fx,
   fxError,
   productId,
+  isAdmin,
 }: {
   sim: Simulation;
   fx: FxSuggestion | null;
   fxError: string | null;
   productId: string | null;
+  isAdmin: boolean;
 }) {
   const shortCount = sim.lines.filter((l) => Number(l.shortage) > 0).length;
   const limit = limitingLine(sim);
@@ -223,6 +270,9 @@ function SummaryCard({
   const totalTry = sim.total_cost_try === null ? null : Number(sim.total_cost_try);
   const totalUsd = sim.total_cost_usd === null ? null : Number(sim.total_cost_usd);
   const impliedRate = totalTry !== null && totalUsd ? totalTry / totalUsd : null;
+  // Süre verisi yoksa (0 veya boş) tahmin uydurulmaz: "Süre tanımlı değil".
+  const hasMinutes = Number(sim.unit_production_minutes) > 0;
+  const variantHref = productId ? `/urunler/${productId}/varyant/${sim.variant.id}` : null;
 
   return (
     <Card
@@ -234,11 +284,12 @@ function SummaryCard({
       {!sim.has_bom ? (
         <Alert tone="warning" title="Reçete tanımlı değil">
           Bu varyant için reçete (BOM) yok; malzeme ihtiyacı ve maliyet hesaplanamaz, üretim başlatılamaz.
-          {productId ? (
+          {variantHref ? (
             <>
               {" "}
-              <Link className="link" href={`/urunler/${productId}/varyant/${sim.variant.id}`}>
-                Reçeteyi tanımla
+              {/* Yazma çağrısı yalnız yöneticiye; görüntüleyici varyant sayfasına nötr bağlantı görür. */}
+              <Link className="link" href={variantHref}>
+                {isAdmin ? "Reçeteyi tanımla" : "Varyantı görüntüle"}
               </Link>
             </>
           ) : null}
@@ -299,13 +350,35 @@ function SummaryCard({
       ) : null}
 
       <SummarySection icon={Clock} title="Süre">
-        <Row label="Birim üretim süresi" value={fmtMinutes(sim.unit_production_minutes)} />
-        <Row
-          label="Tahmini üretim süresi"
-          value={fmtMinutes(sim.estimated_minutes)}
-          hint={`${fmtInt(sim.quantity)} × ${fmtMinutes(sim.unit_production_minutes)}`}
-          strong
-        />
+        {hasMinutes ? (
+          <>
+            <Row label="Birim üretim süresi" value={fmtMinutes(sim.unit_production_minutes)} />
+            <Row
+              label="Tahmini üretim süresi"
+              value={fmtMinutes(sim.estimated_minutes)}
+              hint={`${fmtInt(sim.quantity)} × ${fmtMinutes(sim.unit_production_minutes)}`}
+              strong
+            />
+          </>
+        ) : (
+          <Row
+            label="Tahmini üretim süresi"
+            value={<span className="font-medium text-ink-muted">Süre tanımlı değil</span>}
+            hint={
+              <>
+                Ürün veya varyant için birim üretim süresi girilmemiş; süre tahmini yapılmaz.
+                {isAdmin && variantHref ? (
+                  <>
+                    {" "}
+                    <Link className="link" href={variantHref}>
+                      Süreyi tanımla
+                    </Link>
+                  </>
+                ) : null}
+              </>
+            }
+          />
+        )}
       </SummarySection>
 
       <SummarySection icon={ArrowLeftRight} title="Kur">
@@ -319,7 +392,12 @@ function SummaryCard({
             hint={
               <>
                 {fxSourceLabel(fx.source, fx.rate_type)} · kur tarihi {fmtDate(fx.rate_date)}
-                {!fx.is_valid ? <span className="block font-medium text-[#8a5b0a]">Kur eski; başlatırken güncel kur istenir.</span> : null}
+                {!fx.is_valid ? (
+                  <span className="mt-0.5 flex items-start gap-1 font-medium text-ink-soft">
+                    <TriangleAlert className="mt-px size-3 shrink-0 text-chart-amber" aria-hidden />
+                    Kur eski; başlatırken güncel kur istenir.
+                  </span>
+                ) : null}
               </>
             }
           />
@@ -355,7 +433,7 @@ function Row({ label, value, hint, strong = false }: { label: string; value: Rea
   );
 }
 
-function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string | null }) {
+function MaterialsCard({ sim, productId, isAdmin }: { sim: Simulation; productId: string | null; isAdmin: boolean }) {
   const shortCount = sim.lines.filter((l) => Number(l.shortage) > 0).length;
   const okCount = sim.lines.length - shortCount;
   const totalTry = Number(sim.total_cost_try ?? 0);
@@ -388,12 +466,12 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
           action={
             productId ? (
               <ButtonLink href={`/urunler/${productId}/varyant/${sim.variant.id}`} size="sm" variant="secondary">
-                Reçeteyi tanımla
+                {isAdmin ? "Reçeteyi tanımla" : "Varyantı görüntüle"}
               </ButtonLink>
             ) : undefined
           }
         >
-          Bu varyantın reçetesinde malzeme yok.
+          Bu varyantın reçetesinde malzeme yok.{isAdmin ? "" : " Reçeteyi yönetici tanımlar."}
         </EmptyState>
       ) : (
         <TableWrap>
@@ -403,16 +481,20 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
                 <th>Malzeme</th>
                 <th className="num">Gerekli</th>
                 <th className="num">Mevcut</th>
-                <th className="num">Eksik</th>
-                <th>Durum</th>
-                <th className="num">Birim maliyet</th>
-                <th className="num">Tahmini tutar</th>
+                <th className="num">Eksik / durum</th>
+                <th className="num" title="Gösterim birimi başına; TL (kayıt değeri), USD bilgi">
+                  Birim maliyet
+                </th>
+                <th className="num" title="TL (kayıt değeri); USD bilgi ve maliyet payı">
+                  Tahmini tutar
+                </th>
               </tr>
             </thead>
             <tbody>
               {sim.lines.map((l) => {
                 const short = Number(l.shortage) > 0;
                 const share = totalTry > 0 && l.line_cost_try !== null ? (Number(l.line_cost_try) / totalTry) * 100 : null;
+                const factor = Number(l.display_factor);
                 return (
                   <tr key={l.material_id} className={short ? "[&>td]:bg-chart-red/5" : undefined}>
                     <td className="min-w-32">
@@ -420,6 +502,10 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
                         {l.name}
                       </Link>
                       <div className="code">{l.code}</div>
+                      {/* Dar ekranda durum sütunu kaydırma dışında kalır; durum adın altında da görünür. */}
+                      <div className="mt-1 sm:hidden">
+                        <LineStatus short={short} />
+                      </div>
                     </td>
                     <td className="num">
                       {fmtQty(l.required, l.display_factor, l.display_unit)}
@@ -430,40 +516,34 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
                     <td className="num">{fmtQty(l.available, l.display_factor, l.display_unit)}</td>
                     <td className="num">
                       {short ? (
-                        <span className="font-semibold text-[#cc3f22]">{fmtQty(l.shortage, l.display_factor, l.display_unit)}</span>
-                      ) : (
-                        <span className="text-ink-muted">—</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap">
-                      {short ? (
                         <Badge tone="red" icon={AlertOctagon}>
-                          Eksik
+                          {fmtQty(l.shortage, l.display_factor, l.display_unit)} eksik
                         </Badge>
                       ) : (
                         <Badge tone="green" icon={CheckCircle2}>
                           Yeterli
                         </Badge>
                       )}
-                      <div className="mt-0.5 text-xs text-ink-muted tabular-nums">en fazla {fmtInt(l.max_units)} adet</div>
+                      <div className="mt-0.5 text-xs text-ink-muted">en fazla {fmtInt(l.max_units)} adet</div>
                     </td>
                     <td className="num">
                       {l.unit_cost_try !== null ? (
                         <>
-                          {fmtUnitMoney(Number(l.unit_cost_try) * Number(l.display_factor), "TRY")}
+                          {fmtMoney(Number(l.unit_cost_try) * factor, "TRY", 4)}
                           <span className="text-xs text-ink-muted"> / {l.display_unit}</span>
                           <div className="text-xs text-ink-muted">
-                            {fmtUnitMoney(Number(l.unit_cost_usd) * Number(l.display_factor), "USD")} / {l.display_unit}
+                            {fmtMoney(Number(l.unit_cost_usd) * factor, "USD", 4)} / {l.display_unit}
                           </div>
                         </>
                       ) : (
-                        "—"
+                        <span className="text-ink-muted">—</span>
                       )}
                       {l.cost_basis === "last_purchase" ? <div className="text-xs text-ink-muted">son alış fiyatı</div> : null}
                       {l.cost_basis === "none" ? (
-                        <div className="inline-flex items-center gap-1 text-xs font-medium text-[#9a6711]">
-                          <TriangleAlert className="size-3" aria-hidden />
-                          maliyet yok
+                        <div className="mt-0.5">
+                          <Badge tone="amber" icon={TriangleAlert}>
+                            maliyet yok
+                          </Badge>
                         </div>
                       ) : null}
                     </td>
@@ -471,7 +551,7 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
                       {fmtMoney(l.line_cost_try, "TRY")}
                       <div className="text-xs text-ink-muted">
                         {fmtMoney(l.line_cost_usd, "USD")}
-                        {share !== null ? ` · %${fmtNum(share, 1)}` : ""}
+                        {share !== null ? ` · %${fmtNum(share, 1, 1)}` : ""}
                       </div>
                     </td>
                   </tr>
@@ -481,7 +561,6 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
             <tfoot>
               <tr>
                 <td colSpan={5}>Toplam tahmini malzeme maliyeti</td>
-                <td className="num" />
                 <td className="num">
                   {fmtMoney(sim.total_cost_try, "TRY")}
                   <div className="text-xs font-medium text-ink-muted">{fmtMoney(sim.total_cost_usd, "USD")}</div>
@@ -492,6 +571,18 @@ function MaterialsCard({ sim, productId }: { sim: Simulation; productId: string 
         </TableWrap>
       )}
     </Card>
+  );
+}
+
+function LineStatus({ short }: { short: boolean }) {
+  return short ? (
+    <Badge tone="red" icon={AlertOctagon}>
+      Eksik
+    </Badge>
+  ) : (
+    <Badge tone="green" icon={CheckCircle2}>
+      Yeterli
+    </Badge>
   );
 }
 
@@ -512,7 +603,15 @@ function RecipeListCard({ variants, recipes, error }: { variants: PickerVariant[
       {error ? (
         <ErrorState message={error} compact title="Reçeteler yüklenemedi" />
       ) : rows.length === 0 ? (
-        <EmptyState title="Reçetesi olan varyant yok" compact action={<ButtonLink href="/urunler" size="sm" variant="secondary">Ürünler ve BOM</ButtonLink>}>
+        <EmptyState
+          title="Reçetesi olan varyant yok"
+          compact
+          action={
+            <ButtonLink href="/urunler" size="sm" variant="secondary">
+              Ürünler ve BOM
+            </ButtonLink>
+          }
+        >
           Simülasyon için önce bir varyanta reçete (BOM) tanımlayın.
         </EmptyState>
       ) : (
@@ -522,9 +621,11 @@ function RecipeListCard({ variants, recipes, error }: { variants: PickerVariant[
               <tr>
                 <th>Ürün / varyant</th>
                 <th className="num">Reçete</th>
-                <th className="num">Tahmini reçete maliyeti (1 adet)</th>
+                <th className="num hidden sm:table-cell" title="Reçetenin 1 adet için güncel tahmini malzeme maliyeti">
+                  Tahmini maliyet / adet
+                </th>
                 <th>Durum</th>
-                <th className="relative w-px">
+                <th className="relative hidden w-px sm:table-cell">
                   <span className="sr-only">İşlem</span>
                 </th>
               </tr>
@@ -532,20 +633,39 @@ function RecipeListCard({ variants, recipes, error }: { variants: PickerVariant[
             <tbody>
               {rows.map((r) => (
                 <tr key={r.variant_id}>
-                  <td className="min-w-48">
-                    <div className="font-medium text-ink">{r.v.product_name}</div>
+                  <td className="min-w-40">
+                    {/* Ad, simülasyon bağlantısıdır: dar ekranda sağdaki düğme kaydırma dışında kalsa da işlem ilk sütundan yapılır. */}
+                    <Link href={`/simulasyon?varyant=${r.variant_id}&adet=1`} className="link">
+                      {r.v.product_name}
+                    </Link>
                     <div className="text-xs text-ink-muted">{r.v.variant_name}</div>
-                  </td>
-                  <td className="num">{fmtInt(r.bom_line_count)} kalem</td>
-                  <td className="num">
-                    {fmtUnitMoney(r.est_unit_cost_try, "TRY")}
-                    <div className="text-xs text-ink-muted">
-                      {fmtUnitMoney(r.est_unit_cost_usd, "USD")}
+                    {/* Dar ekranda maliyet sütunu gizlenir; tahmini maliyet ad altında görünür. */}
+                    <div className="mt-1 text-xs text-ink-soft tabular-nums sm:hidden">
+                      {fmtMoney(r.est_unit_cost_try, "TRY")} · {fmtMoney(r.est_unit_cost_usd, "USD")} / adet
                       {!r.cost_complete ? " · eksik maliyet" : ""}
                     </div>
                   </td>
-                  <td>{r.v.is_active ? <Badge tone="green" icon={CheckCircle2}>Aktif</Badge> : <Badge tone="gray">Pasif</Badge>}</td>
-                  <td className="text-right whitespace-nowrap">
+                  <td className="num">{fmtInt(r.bom_line_count)} kalem</td>
+                  <td
+                    className="num hidden sm:table-cell"
+                    title={`${fmtUnitMoney(r.est_unit_cost_try, "TRY")} · ${fmtUnitMoney(r.est_unit_cost_usd, "USD")}`}
+                  >
+                    {fmtMoney(r.est_unit_cost_try, "TRY")}
+                    <div className="text-xs text-ink-muted">
+                      {fmtMoney(r.est_unit_cost_usd, "USD")}
+                      {!r.cost_complete ? " · eksik maliyet" : ""}
+                    </div>
+                  </td>
+                  <td>
+                    {r.v.is_active ? (
+                      <Badge tone="green" icon={CheckCircle2}>
+                        Aktif
+                      </Badge>
+                    ) : (
+                      <Badge tone="gray">Pasif</Badge>
+                    )}
+                  </td>
+                  <td className="hidden text-right whitespace-nowrap sm:table-cell">
                     <ButtonLink href={`/simulasyon?varyant=${r.variant_id}&adet=1`} size="sm" variant="soft">
                       <Calculator aria-hidden />
                       Simüle et

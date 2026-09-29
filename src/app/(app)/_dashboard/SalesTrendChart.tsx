@@ -20,9 +20,17 @@ const METRICS: Record<Metric, { key: keyof SalesPoint; label: string; color: str
 const WEEKDAY = new Intl.DateTimeFormat("tr-TR", { weekday: "long", timeZone: "UTC" });
 const MONTH_LONG = new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric", timeZone: "UTC" });
 
-function bucketTitle(key: string, g: Granularity) {
-  if (g === "aylik") return MONTH_LONG.format(new Date(`${key}-01T12:00:00Z`));
-  return `${fmtDate(key)} ${WEEKDAY.format(new Date(`${key}T12:00:00Z`))}`;
+/** GG.AA–GG.AA: aylık kovanın dönem içindeki gerçek günleri */
+function rangeText(p: SalesPoint) {
+  return `${fmtDate(p.from).slice(0, 5)}–${fmtDate(p.to).slice(0, 5)}`;
+}
+
+function bucketTitle(p: SalesPoint, g: Granularity) {
+  if (g === "aylik") {
+    const month = MONTH_LONG.format(new Date(`${p.key}-01T12:00:00Z`));
+    return p.partial ? `${month} (${rangeText(p)}, kısmi ay)` : month;
+  }
+  return `${fmtDate(p.key)} ${WEEKDAY.format(new Date(`${p.key}T12:00:00Z`))}`;
 }
 
 function tick(key: string, g: Granularity) {
@@ -53,9 +61,13 @@ export function SalesTrendChart({
   const [showTable, setShowTable] = useState(false);
   const m = METRICS[metric];
   const empty = !points.some((p) => p.sale_count > 0);
-  const useArea = points.length > 45;
+  // Seyrek günlük satışta alan grafiği (eğri) tek günlük satışı komşu günlere yayılmış gibi gösterir;
+  // bu yüzden ~3 aya kadar (≤ 100 kova) her gün/ay kendi sütunuyla çizilir. Daha uzun günlük aralıkta
+  // sütunlar 2 px'in altına indiğinden doğrusal (eğrisiz) alan kullanılır: satış yalnız kendi gününde tepe yapar.
+  const useArea = points.length > 100;
   const unitWord = granularity === "aylik" ? "Aylık" : "Günlük";
   const label = `${unitWord} ${m.label.toLocaleLowerCase("tr-TR")} grafiği, ${periodLabel}`;
+  const partials = granularity === "aylik" ? points.filter((p) => p.partial) : [];
 
   const tooltip = ({ active, payload }: { active?: boolean; payload?: readonly { payload?: unknown }[] }) => {
     if (!active || !payload?.length) return null;
@@ -63,7 +75,7 @@ export function SalesTrendChart({
     const margin = p.revenue_try > 0 ? (p.gross_profit_try / p.revenue_try) * 100 : null;
     return (
       <TooltipBox
-        title={bucketTitle(p.key, granularity)}
+        title={bucketTitle(p, granularity)}
         rows={[
           { label: "Satış sayısı", value: fmtInt(p.sale_count) },
           { label: "Satılan adet", value: `${fmtInt(p.quantity)} adet`, color: metric === "quantity" ? m.color : undefined },
@@ -121,17 +133,30 @@ export function SalesTrendChart({
       className="h-full"
     >
       <div className="px-4 pt-4">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-xs text-ink-muted">
-            <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: m.color }} aria-hidden />
-            {m.label} · {unitWord.toLocaleLowerCase("tr-TR")} kırılım
-          </p>
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="min-w-0 text-xs text-ink-muted">
+            <p>
+              <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: m.color }} aria-hidden />
+              {m.label} · {unitWord.toLocaleLowerCase("tr-TR")} kırılım
+            </p>
+            {partials.length ? (
+              <p className="mt-0.5">
+                Kısmi ay (dönem sınırı):{" "}
+                {partials.map((p, i) => (
+                  <span key={p.key} className="whitespace-nowrap tabular-nums">
+                    {i > 0 ? ", " : ""}
+                    {fmtMonth(p.key)} {rangeText(p)}
+                  </span>
+                ))}
+              </p>
+            ) : null}
+          </div>
           {!empty ? (
             <button
               type="button"
               onClick={() => setShowTable((s) => !s)}
               aria-pressed={showTable}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-ink-muted hover:bg-canvas hover:text-ink"
+              className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-ink-muted hover:bg-canvas hover:text-ink"
             >
               <Table2 className="size-3.5" aria-hidden />
               {showTable ? "Grafiği göster" : "Tablo görünümü"}
@@ -155,7 +180,10 @@ export function SalesTrendChart({
                   .filter((p) => p.sale_count > 0)
                   .map((p) => (
                     <tr key={p.key}>
-                      <td className="whitespace-nowrap">{granularity === "aylik" ? fmtMonth(p.key) : fmtDate(p.key)}</td>
+                      <td className="whitespace-nowrap">
+                        {granularity === "aylik" ? fmtMonth(p.key) : fmtDate(p.key)}
+                        {p.partial ? <div className="text-xs text-ink-muted tabular-nums">{rangeText(p)} · kısmi</div> : null}
+                      </td>
                       <td className="num">{fmtInt(p.sale_count)}</td>
                       <td className="num">{fmtInt(p.quantity)}</td>
                       <td className="num">{fmtMoney(p.revenue_try, "TRY")}</td>
@@ -175,22 +203,26 @@ export function SalesTrendChart({
                   {yAxis}
                   <Tooltip cursor={{ stroke: CHART.axis, strokeDasharray: "3 3" }} content={tooltip} />
                   <Area
-                    type="monotone"
+                    type="linear"
                     dataKey={m.key}
                     stroke={m.color}
                     strokeWidth={2}
                     fill={m.color}
                     fillOpacity={0.12}
-                    activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }}
+                    activeDot={{ r: 4, strokeWidth: 2, className: "stroke-white" }}
                     isAnimationActive={false}
                   />
                 </AreaChart>
               ) : (
-                <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="22%">
+                <BarChart
+                  data={points}
+                  margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+                  barCategoryGap={points.length > 45 ? "12%" : "22%"}
+                >
                   <CartesianGrid {...GRID_PROPS} />
                   {xAxis}
                   {yAxis}
-                  <Tooltip cursor={{ fill: "rgba(64,81,137,0.06)" }} content={tooltip} />
+                  <Tooltip cursor={{ fill: CHART.brand, fillOpacity: 0.06 }} content={tooltip} />
                   <Bar dataKey={m.key} fill={m.color} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
                 </BarChart>
               )}

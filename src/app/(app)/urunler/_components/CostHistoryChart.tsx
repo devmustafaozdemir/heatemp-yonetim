@@ -3,12 +3,17 @@
 import { useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
 import { AXIS_TICK, CHART, ChartFrame, GRID_PROPS, Segmented, TooltipBox } from "@/components/charts/kit";
-import { fmtDate, fmtInt, fmtUnitMoney } from "@/lib/format";
+import { fmtCompactMoney, fmtDate, fmtInt, fmtNum, fmtUnitMoney } from "@/lib/format";
 import type { CostPoint } from "./types";
 
 const COLORS = [CHART.blue, CHART.teal, CHART.violet, CHART.amber, CHART.sky, CHART.red, CHART.brand];
 
 type Cur = "USD" | "TRY";
+
+/** Eksen etiketi: kısa tutar (binlerde fmtCompactMoney, küçük birim maliyetlerde en çok 2 ondalık). */
+function fmtAxisMoney(v: number, cur: Cur) {
+  return Math.abs(v) >= 1000 ? fmtCompactMoney(v, cur) : `${cur === "USD" ? "$" : "₺"}${fmtNum(v, 2)}`;
+}
 
 /**
  * Tamamlanmış üretim partilerinin birim maliyet geçmişi (gerçekleşmiş parti maliyeti).
@@ -80,9 +85,9 @@ export function CostHistoryChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={68}
+            width={60}
             domain={[0, "auto"]}
-            tickFormatter={(v: number) => fmtUnitMoney(v, cur)}
+            tickFormatter={(v: number) => fmtAxisMoney(v, cur)}
           />
           <Tooltip
             content={({ active, payload }) => {
@@ -106,6 +111,7 @@ export function CostHistoryChart({
               y={Number(est)}
               stroke={CHART.amber}
               strokeDasharray="5 4"
+              ifOverflow="extendDomain"
               label={{ value: "Tahmini reçete maliyeti", position: "insideTopRight", fill: CHART.axis, fontSize: 11 }}
             />
           ) : null}

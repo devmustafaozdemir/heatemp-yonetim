@@ -6,7 +6,7 @@ import { fmtDate, fmtMinutes, fmtMoney, fmtPct, fmtUnitMoney } from "@/lib/forma
 import { parseListParams, type SearchParams } from "@/lib/list-params";
 import { load } from "@/lib/query";
 import type { Product, VariantOverview, VariantView } from "@/lib/types";
-import { BATCH_SORTABLE, BatchHistoryCard, OpeningBatchesCard, loadCostPoints } from "../_components/Batches";
+import { BATCH_SORTABLE, BatchHistoryCard, NoProductionCard, OpeningBatchesCard, loadCostPoints } from "../_components/Batches";
 import { SourceTag, priceMinusEstimate } from "../_components/bits";
 import { CostHistoryChart } from "../_components/CostHistoryChart";
 import type { RecipeCostRow } from "../_components/types";
@@ -30,6 +30,7 @@ export async function CostTab({ ctx, product, variants, sp }: { ctx: AuthContext
   const lastBatchId = new Map<string, string>();
   for (const p of points.data ?? []) lastBatchId.set(`${p.variant_id}:${p.batch_no}`, p.id);
   const error = overview.error ?? recipes.error;
+  const noProduction = !points.error && (points.data ?? []).length === 0;
 
   return (
     <div className="grid gap-4">
@@ -49,104 +50,195 @@ export async function CostTab({ ctx, product, variants, sp }: { ctx: AuthContext
         {error ? (
           <ErrorState message={error} compact />
         ) : (
-          <TableWrap className="relative">
-            <table className="table-base">
-              <thead>
-                <tr>
-                  <th>Varyant</th>
-                  <th className="num whitespace-normal">Tanımlı satış fiyatı</th>
-                  <th className="num whitespace-normal">Tahmini reçete maliyeti</th>
-                  <th className="num whitespace-normal">Gerçekleşmiş parti maliyeti</th>
-                  <th className="num" title="Son iki tamamlanmış üretim partisi arasındaki USD birim maliyet değişimi">
-                    Son değişim
-                  </th>
-                  <th className="num whitespace-normal" title="Tanımlı satış fiyatı ile tahmini reçete maliyeti arasındaki fark (fiyatın para biriminde)">
-                    Fiyat − tahmini maliyet
-                  </th>
-                  <th className="num whitespace-normal">Birim üretim süresi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {variants.map((v) => {
-                  const o = ov.get(v.id);
-                  const r = rc.get(v.id);
-                  const m = priceMinusEstimate(v.sale_price, v.currency, r);
-                  const batchId = o?.last_batch_no ? lastBatchId.get(`${v.id}:${o.last_batch_no}`) : undefined;
-                  return (
-                    <tr key={v.id}>
-                      <td className="min-w-40">
-                        <Link href={`/urunler/${product.id}/varyant/${v.id}?sekme=maliyet`} className="link">
-                          {v.variant_name}
-                        </Link>
-                        <div className="code mt-0.5 text-ink-muted">{v.variant_code}</div>
-                      </td>
-                      <td className="num">
-                        <div>{fmtMoney(v.sale_price, v.currency)}</div>
-                        <SourceTag overridden={v.price_overridden} />
-                      </td>
-                      <td className="num">
+          <>
+            <TableWrap className="relative hidden sm:block">
+              <table className="table-base">
+                <thead>
+                  <tr>
+                    <th>Varyant</th>
+                    <th className="num whitespace-normal">Tanımlı satış fiyatı</th>
+                    <th className="num whitespace-normal">Tahmini reçete maliyeti</th>
+                    <th className="num whitespace-normal">Gerçekleşmiş parti maliyeti</th>
+                    <th className="num" title="Son iki tamamlanmış üretim partisi arasındaki USD birim maliyet değişimi">
+                      Son değişim
+                    </th>
+                    <th className="num whitespace-normal" title="Tanımlı satış fiyatı ile tahmini reçete maliyeti arasındaki fark (fiyatın para biriminde)">
+                      Fiyat − tahmini maliyet
+                    </th>
+                    <th className="num whitespace-normal">Birim üretim süresi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variants.map((v) => {
+                    const o = ov.get(v.id);
+                    const r = rc.get(v.id);
+                    const m = priceMinusEstimate(v.sale_price, v.currency, r);
+                    const batchId = o?.last_batch_no ? lastBatchId.get(`${v.id}:${o.last_batch_no}`) : undefined;
+                    return (
+                      <tr key={v.id}>
+                        <td className="min-w-40">
+                          <Link href={`/urunler/${product.id}/varyant/${v.id}?sekme=maliyet`} className="link">
+                            {v.variant_name}
+                          </Link>
+                          <div className="code mt-0.5 text-ink-muted">{v.variant_code}</div>
+                        </td>
+                        <td className="num">
+                          <div>{fmtMoney(v.sale_price, v.currency)}</div>
+                          <SourceTag overridden={v.price_overridden} />
+                        </td>
+                        <td className="num">
+                          {r && r.bom_line_count > 0 ? (
+                            <>
+                              {fmtUnitMoney(r.est_unit_cost_usd, "USD")}
+                              <div className="text-xs text-ink-muted">{fmtUnitMoney(r.est_unit_cost_try, "TRY")}</div>
+                              {!r.cost_complete ? <div className="text-xs text-amber-700">bazı malzemelerin maliyeti yok</div> : null}
+                            </>
+                          ) : (
+                            <span className="text-xs text-ink-muted">Reçete yok</span>
+                          )}
+                        </td>
+                        <td className="num">
+                          {o?.last_batch_no ? (
+                            <>
+                              {fmtUnitMoney(o.last_unit_cost_usd, "USD")}
+                              <div className="text-xs text-ink-muted">{fmtUnitMoney(o.last_unit_cost_try, "TRY")}</div>
+                              <div className="text-xs">
+                                {batchId ? (
+                                  <Link href={`/uretim/${batchId}`} className="link font-mono">
+                                    {o.last_batch_no}
+                                  </Link>
+                                ) : (
+                                  <span className="code">{o.last_batch_no}</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-ink-muted">{fmtDate(o.last_completed_at)}</div>
+                            </>
+                          ) : (
+                            <span className="text-xs text-ink-muted">Tamamlanmış üretim yok</span>
+                          )}
+                        </td>
+                        <td className="num">{o?.last_batch_no ? <CostChange pct={o.unit_cost_usd_change_pct} prev={o.prev_batch_no} /> : "—"}</td>
+                        <td className="num">
+                          {m ? (
+                            <>
+                              <span className={m.diff < 0 ? "font-medium text-red-600" : "font-medium text-ink"}>{fmtUnitMoney(m.diff, v.currency)}</span>
+                              {m.pct !== null ? <div className="text-xs text-ink-muted">fiyata göre {fmtPct(m.pct)}</div> : null}
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="num">
+                          <div>{fmtMinutes(v.unit_production_minutes)}</div>
+                          <SourceTag overridden={v.minutes_overridden} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableWrap>
+
+            {/* Mobil: varyant başına kart; üç maliyet kavramı yan yana, yatay kaydırma gerekmez. */}
+            <ul className="divide-y divide-line sm:hidden">
+              {variants.map((v) => {
+                const o = ov.get(v.id);
+                const r = rc.get(v.id);
+                const m = priceMinusEstimate(v.sale_price, v.currency, r);
+                const batchId = o?.last_batch_no ? lastBatchId.get(`${v.id}:${o.last_batch_no}`) : undefined;
+                return (
+                  <li key={v.id} className="px-4 py-3">
+                    <Link href={`/urunler/${product.id}/varyant/${v.id}?sekme=maliyet`} className="link">
+                      {v.variant_name}
+                    </Link>{" "}
+                    <span className="code text-ink-muted">{v.variant_code}</span>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Tanımlı satış fiyatı</dt>
+                        <dd className="font-medium text-ink tabular-nums">
+                          {fmtMoney(v.sale_price, v.currency)} <SourceTag overridden={v.price_overridden} />
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Birim üretim süresi</dt>
+                        <dd className="tabular-nums">
+                          {fmtMinutes(v.unit_production_minutes)} <SourceTag overridden={v.minutes_overridden} />
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Tahmini reçete maliyeti</dt>
                         {r && r.bom_line_count > 0 ? (
                           <>
-                            {fmtUnitMoney(r.est_unit_cost_usd, "USD")}
-                            <div className="text-xs text-ink-muted">{fmtUnitMoney(r.est_unit_cost_try, "TRY")}</div>
-                            {!r.cost_complete ? <div className="text-xs text-amber-700">bazı malzemelerin maliyeti yok</div> : null}
+                            <dd className="font-medium text-ink tabular-nums">{fmtUnitMoney(r.est_unit_cost_usd, "USD")}</dd>
+                            <dd className="text-xs text-ink-muted tabular-nums">{fmtUnitMoney(r.est_unit_cost_try, "TRY")}</dd>
+                            {!r.cost_complete ? <dd className="text-xs text-amber-700">bazı malzemelerin maliyeti yok</dd> : null}
                           </>
                         ) : (
-                          <span className="text-xs text-ink-muted">Reçete yok</span>
+                          <dd className="text-xs text-ink-muted">Reçete yok</dd>
                         )}
-                      </td>
-                      <td className="num">
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-ink-muted">Gerçekleşmiş parti maliyeti</dt>
                         {o?.last_batch_no ? (
                           <>
-                            {fmtUnitMoney(o.last_unit_cost_usd, "USD")}
-                            <div className="text-xs text-ink-muted">{fmtUnitMoney(o.last_unit_cost_try, "TRY")}</div>
-                            <div className="text-xs">
+                            <dd className="font-medium text-ink tabular-nums">
+                              {fmtUnitMoney(o.last_unit_cost_usd, "USD")}{" "}
+                              <span className="text-xs">
+                                <CostChange pct={o.unit_cost_usd_change_pct} prev={o.prev_batch_no} />
+                              </span>
+                            </dd>
+                            <dd className="text-xs text-ink-muted tabular-nums">{fmtUnitMoney(o.last_unit_cost_try, "TRY")}</dd>
+                            <dd className="text-xs">
                               {batchId ? (
                                 <Link href={`/uretim/${batchId}`} className="link font-mono">
                                   {o.last_batch_no}
                                 </Link>
                               ) : (
                                 <span className="code">{o.last_batch_no}</span>
-                              )}
-                            </div>
-                            <div className="text-xs text-ink-muted">{fmtDate(o.last_completed_at)}</div>
+                              )}{" "}
+                              <span className="text-ink-muted">{fmtDate(o.last_completed_at)}</span>
+                            </dd>
                           </>
                         ) : (
-                          <span className="text-xs text-ink-muted">Tamamlanmış üretim yok</span>
+                          <dd className="text-xs text-ink-muted">Tamamlanmış üretim yok</dd>
                         )}
-                      </td>
-                      <td className="num">{o?.last_batch_no ? <CostChange pct={o.unit_cost_usd_change_pct} prev={o.prev_batch_no} /> : "—"}</td>
-                      <td className="num">
-                        {m ? (
-                          <>
-                            <span className={m.diff < 0 ? "font-medium text-red-600" : "font-medium text-ink"}>{fmtUnitMoney(m.diff, v.currency)}</span>
-                            {m.pct !== null ? <div className="text-xs text-ink-muted">fiyata göre {fmtPct(m.pct)}</div> : null}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="num">
-                        <div>{fmtMinutes(v.unit_production_minutes)}</div>
-                        <SourceTag overridden={v.minutes_overridden} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </TableWrap>
+                      </div>
+                      <div className="col-span-2 min-w-0">
+                        <dt className="text-xs text-ink-muted">Fiyat − tahmini maliyet</dt>
+                        <dd className="tabular-nums">
+                          {m ? (
+                            <>
+                              <span className={m.diff < 0 ? "font-medium text-red-600" : "font-medium text-ink"}>{fmtUnitMoney(m.diff, v.currency)}</span>
+                              {m.pct !== null ? <span className="text-xs text-ink-muted"> · fiyata göre {fmtPct(m.pct)}</span> : null}
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </Card>
 
-      <Card
-        title="Gerçekleşmiş parti birim maliyeti"
-        description="Tamamlanmış üretim partileri (son 120), tamamlanma tarihine göre. Varyant başına bir çizgi."
-      >
-        {points.error ? <ErrorState message={points.error} compact /> : <CostHistoryChart points={points.data ?? []} />}
-      </Card>
-
-      <BatchHistoryCard ctx={ctx} scope={scope} basePath={`/urunler/${product.id}`} lp={lp} keep={{ sekme: "maliyet" }} showVariant={variants.length > 1} />
+      {noProduction ? (
+        // Tamamlanmış üretim yoksa grafik ve parti tablosu yerine tek bir boş durum kartı.
+        <NoProductionCard />
+      ) : (
+        <>
+          <Card
+            title="Gerçekleşmiş parti birim maliyeti"
+            description="Tamamlanmış üretim partileri (son 120), tamamlanma tarihine göre. Varyant başına bir çizgi."
+          >
+            {points.error ? <ErrorState message={points.error} compact /> : <CostHistoryChart points={points.data ?? []} />}
+          </Card>
+          <BatchHistoryCard ctx={ctx} scope={scope} basePath={`/urunler/${product.id}`} lp={lp} keep={{ sekme: "maliyet" }} showVariant={variants.length > 1} />
+        </>
+      )}
       <OpeningBatchesCard ctx={ctx} scope={scope} showVariant={variants.length > 1} />
     </div>
   );

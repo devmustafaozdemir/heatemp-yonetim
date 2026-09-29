@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Factory, PackageOpen, Receipt, Truck, Undo2, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Ban, Factory, PackageOpen, Receipt, Truck, Undo2, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { Badge, Card, EmptyState, ErrorState, TableWrap, type BadgeTone } from "@/components/ui";
 import { Pagination, SortTh } from "@/components/ui/list";
@@ -43,6 +43,14 @@ const TYPE_FILTER: Record<string, { label: string; types: MovementType[]; kind?:
 
 export const MOVEMENT_SORTABLE = ["movement_date", "qty"];
 
+/** Dar ekranda (tablo başlığı yokken) sıralama seçenekleri; SortTh ile aynı anahtarlar. */
+const MOVEMENT_SORT_OPTIONS = [
+  { value: "movement_date:desc", label: "En yeni önce" },
+  { value: "movement_date:asc", label: "En eski önce" },
+  { value: "qty:desc", label: "Miktar (azalan)" },
+  { value: "qty:asc", label: "Miktar (artan)" },
+];
+
 /**
  * Sayfalı stok hareketleri (stock_movements). Sunucu tarafı filtre/sıralama/sayfalama;
  * tüm durum URL'de, sekme parametresi korunur.
@@ -69,7 +77,7 @@ export async function StockMovementsCard({
   let query = ctx.supabase
     .from("stock_movements")
     .select(
-      "id, movement_date, movement_type, location, qty, unit_cost_try, unit_cost_usd, variant_id, batch_id, delivery_id, sale_id, created_at, production_batches!inner(batch_no, kind), deliveries(delivery_no), sales(sale_no)",
+      "id, movement_date, movement_type, location, qty, unit_cost_try, unit_cost_usd, variant_id, batch_id, delivery_id, sale_id, created_at, production_batches!inner(batch_no, kind), deliveries(delivery_no, status), sales(sale_no, status)",
       { count: "exact" },
     )
     .in("variant_id", ids);
@@ -109,10 +117,11 @@ export async function StockMovementsCard({
         total={res.count}
         noun="hareket"
         filters={[
-          { key: "tur", label: "Hareket türü", options: Object.entries(TYPE_FILTER).map(([value, f]) => ({ value, label: f.label })) },
+          { key: "tur", label: "Hareket türü", allLabel: "Tür: tümü", options: Object.entries(TYPE_FILTER).map(([value, f]) => ({ value, label: f.label })) },
           {
             key: "konum",
             label: "Raf",
+            allLabel: "Raf: tümü",
             options: [
               { value: "heatemp", label: "Heatemp rafı" },
               { value: "mekonsis", label: "Mekonsis rafı" },
@@ -120,6 +129,7 @@ export async function StockMovementsCard({
           },
           ...(multi ? [{ key: "varyant", label: "Varyant", options: variants.map((x) => ({ value: x.id, label: `${x.name} (${x.code})` })) }] : []),
         ]}
+        sort={{ options: MOVEMENT_SORT_OPTIONS, sort: lp.sort, dir: lp.dir, mobileOnly: true }}
         dateRange={{ label: "Hareket tarihi" }}
       />
       {res.error ? (
@@ -142,7 +152,9 @@ export async function StockMovementsCard({
                   <th>Raf</th>
                   {multi ? <th>Varyant</th> : null}
                   <th className="num">Birim maliyet</th>
-                  <th className="num">Tutar (TL)</th>
+                  <th className="num" title="Miktar × hareketin FIFO parti birim maliyeti (TL). Satış tutarı değildir.">
+                    Maliyet tutarı (TL)
+                  </th>
                   <th>Belge</th>
                 </tr>
               </thead>
@@ -206,7 +218,9 @@ export async function StockMovementsCard({
                     <div className={r.qty > 0 ? "text-[15px] font-semibold text-emerald-700 tabular-nums" : "text-[15px] font-semibold text-red-600 tabular-nums"}>
                       {signedQty(r.qty)}
                     </div>
-                    <div className="text-xs text-ink-muted tabular-nums">{fmtMoney(Number(r.qty) * Number(r.unit_cost_try), "TRY")}</div>
+                    <div className="text-xs text-ink-muted tabular-nums" title="Miktar × FIFO parti birim maliyeti; satış tutarı değildir">
+                      maliyet {fmtMoney(Number(r.qty) * Number(r.unit_cost_try), "TRY")}
+                    </div>
                   </div>
                 </li>
               );
@@ -225,16 +239,41 @@ function signedQty(qty: number) {
   return `${qty > 0 ? "+" : "−"}${fmtInt(Math.abs(qty))}`;
 }
 
-/** Hareketin belgeleri: satış, teslimat ve parti numarası. */
+/**
+ * Hareketin belgeleri: satış, teslimat ve parti numarası (her biri kendi detay sayfasına bağlı).
+ * Belge sonradan iptal edildiyse (satış/teslimat status = cancelled) çıkış ve giriş satırlarında
+ * "İptal edildi" rozeti gösterilir; böylece iptal edilmiş satışın çıkışı gerçekleşmiş satış
+ * gibi okunmaz (iptalin karşı hareketi ayrı satırda yer alır).
+ */
 function DocLinks({ row: r, inline = false }: { row: MovementRow; inline?: boolean }) {
+  const saleCancelled = r.sales?.status === "cancelled" && r.movement_type === "sale_out";
+  const deliveryCancelled = r.deliveries?.status === "cancelled" && (r.movement_type === "delivery_out" || r.movement_type === "delivery_in");
   return (
-    <div className={inline ? "flex flex-wrap gap-x-2 gap-y-0.5 text-xs" : "flex flex-col gap-0.5 text-xs"}>
+    <div className={inline ? "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" : "flex flex-col items-start gap-0.5 text-xs"}>
       {r.sale_id && r.sales ? (
-        <Link href={`/satislar/${r.sale_id}`} className="link">
-          {r.sales.sale_no}
-        </Link>
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <Link href={`/satislar/${r.sale_id}`} className="link">
+            {r.sales.sale_no}
+          </Link>
+          {saleCancelled ? (
+            <Badge tone="gray" icon={Ban} title="Satış sonradan iptal edildi; adet “Satış iptali iadesi” hareketiyle rafa döndü. Ciro/kâr oluşturmaz.">
+              İptal edildi
+            </Badge>
+          ) : null}
+        </span>
       ) : null}
-      {r.deliveries ? <span className="code">{r.deliveries.delivery_no}</span> : null}
+      {r.delivery_id && r.deliveries ? (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <Link href={`/teslimatlar/${r.delivery_id}`} className="link">
+            {r.deliveries.delivery_no}
+          </Link>
+          {deliveryCancelled ? (
+            <Badge tone="gray" icon={Ban} title="Teslimat sonradan iptal edildi; karşı hareketi “Teslimat iptali” satırlarındadır.">
+              İptal edildi
+            </Badge>
+          ) : null}
+        </span>
+      ) : null}
       {r.production_batches ? (
         <Link href={`/uretim/${r.batch_id}`} className={r.sale_id || r.deliveries ? "text-ink-muted hover:text-brand-600 hover:underline" : "link"}>
           {r.production_batches.batch_no}

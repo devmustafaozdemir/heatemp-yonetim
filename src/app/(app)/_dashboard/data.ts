@@ -39,6 +39,11 @@ export interface SalesTotals {
 export interface SalesPoint {
   /** YYYY-MM-DD (günlük) veya YYYY-MM (aylık) */
   key: string;
+  /** Kovanın seçilen dönem içindeki gerçek ilk ve son günü (YYYY-AA-GG) */
+  from: string;
+  to: string;
+  /** Aylık kırılımda ay dönem sınırında kesiliyorsa (ayın tamamı sayılmıyorsa) true */
+  partial: boolean;
   sale_count: number;
   quantity: number;
   revenue_try: number;
@@ -60,11 +65,32 @@ export function sumSales(rows: SalesPeriodRow[], from: string, to: string): Sale
   }, ZERO);
 }
 
-/** Seçilen dönemin tüm günleri/ayları; satış olmayan kovalar 0 ile doldurulur. */
+/** Ayın son günü (YYYY-AA-GG); ay anahtarı YYYY-AA. */
+function monthEnd(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0, 12)).toISOString().slice(0, 10);
+}
+
+/**
+ * Seçilen dönemin tüm günleri/ayları; satış olmayan kovalar 0 ile doldurulur. Aylık kırılımda
+ * dönemin ilk ve son ayı yalnız dönem içindeki günleri kapsar (from/to, partial).
+ */
 export function salesSeries(rows: SalesPeriodRow[], period: Period, granularity: Granularity): SalesPoint[] {
   const keys = buckets(period.from, period.to, granularity);
   const map = new Map<string, SalesPoint>(
-    keys.map((k) => [k, { key: k, sale_count: 0, quantity: 0, revenue_try: 0, gross_profit_try: 0 }]),
+    keys.map((k) => {
+      let from = k;
+      let to = k;
+      let partial = false;
+      if (granularity === "aylik") {
+        const start = `${k}-01`;
+        const end = monthEnd(k);
+        from = start < period.from ? period.from : start;
+        to = end > period.to ? period.to : end;
+        partial = from !== start || to !== end;
+      }
+      return [k, { key: k, from, to, partial, sale_count: 0, quantity: 0, revenue_try: 0, gross_profit_try: 0 }];
+    }),
   );
   for (const r of rows) {
     const day = r.day ?? "";

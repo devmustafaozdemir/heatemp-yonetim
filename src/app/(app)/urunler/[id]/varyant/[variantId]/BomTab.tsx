@@ -3,17 +3,60 @@ import { ActionForm, SubmitButton } from "@/components/forms";
 import { Alert, ButtonLink, Card, DefinitionList, EmptyState, ErrorState, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
 import { fmtInt, fmtMinutes, fmtMoney, fmtNum, fmtQty, fmtUnitMoney, toNumber } from "@/lib/format";
-import { load } from "@/lib/query";
-import type { BomItem, Unit } from "@/lib/types";
-import { priceMinusEstimate } from "../../../_components/bits";
+import { load, type Loaded } from "@/lib/query";
+import type { BomItem, Unit, VariantView } from "@/lib/types";
+import { materialUnitCost, priceMinusEstimate } from "../../../_components/bits";
 import { CostShareChart } from "../../../_components/CostShareChart";
-import { copyBom, deleteBomItem, saveBomItem } from "../../../actions";
+import { deleteBomItem, saveBomItem } from "../../../actions";
 import { BomLineFields, type BomMaterialOption } from "../../../BomLineForm";
+import type { RecipeCostRow } from "../../../_components/types";
+import { CopyBomForm, type CopySourceGroup } from "./CopyBomForm";
 import type { VariantPageData } from "./types";
+
+/**
+ * Reçete kopyalama kaynakları: reçetesi olan (bom_line_count > 0) diğer varyantlar, ürüne göre
+ * gruplu; bu ürünün varyantları önce. Boş reçeteli varyant kaynak olamaz (copy_bom hata verir).
+ */
+async function loadCopySources(ctx: AuthContext, variantId: string, productId: string): Promise<Loaded<CopySourceGroup[]>> {
+  const rc = await load(
+    ctx.supabase
+      .from("v_variant_recipe_cost")
+      .select("variant_id, bom_line_count")
+      .gt("bom_line_count", 0)
+      .neq("variant_id", variantId)
+      .returns<Pick<RecipeCostRow, "variant_id" | "bom_line_count">[]>(),
+  );
+  if (rc.error || !rc.data || rc.data.length === 0) return { data: rc.error ? null : [], error: rc.error, count: null };
+  const lines = new Map(rc.data.map((r) => [r.variant_id, r.bom_line_count]));
+  const vs = await load(
+    ctx.supabase
+      .from("v_variants")
+      .select("id, product_id, product_name, variant_name, variant_code, display_name, is_active")
+      .in("id", [...lines.keys()])
+      .order("product_name")
+      .order("variant_name")
+      .returns<Pick<VariantView, "id" | "product_id" | "product_name" | "variant_name" | "variant_code" | "display_name" | "is_active">[]>(),
+  );
+  if (vs.error || !vs.data) return { data: null, error: vs.error, count: null };
+  const groups = new Map<string, CopySourceGroup>();
+  for (const v of vs.data) {
+    const key = v.product_id === productId ? "" : v.product_id;
+    const g = groups.get(key) ?? { label: v.product_id === productId ? `Bu ürün — ${v.product_name}` : v.product_name, options: [] };
+    g.options.push({
+      id: v.id,
+      displayName: v.display_name,
+      label: `${v.variant_name} (${v.variant_code}) · ${fmtInt(lines.get(v.id))} kalem${v.is_active ? "" : " · pasif"}`,
+    });
+    groups.set(key, g);
+  }
+  const own = groups.get("");
+  groups.delete("");
+  return { data: own ? [own, ...groups.values()] : [...groups.values()], error: null, count: null };
+}
 
 export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; data: VariantPageData; isAdmin: boolean }) {
   const { product, variant, effective: e, sim } = data;
-  const [bom, materials, units, siblings] = await Promise.all([
+  const [bom, materials, units, sources] = await Promise.all([
     load(ctx.supabase.from("bom_items").select("*").eq("variant_id", variant.id).returns<BomItem[]>()),
     isAdmin
       ? load(
@@ -28,10 +71,12 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
     isAdmin
       ? load(ctx.supabase.from("units").select("*").order("sort_order").returns<Unit[]>())
       : Promise.resolve({ data: [] as Unit[], error: null, count: null }),
-    isAdmin
-      ? load(ctx.supabase.from("v_variants").select("id, display_name").neq("id", variant.id).order("display_name").returns<{ id: string; display_name: string }[]>())
-      : Promise.resolve({ data: [] as { id: string; display_name: string }[], error: null, count: null }),
+    isAdmin ? loadCopySources(ctx, variant.id, product.id) : Promise.resolve({ data: [] as CopySourceGroup[], error: null, count: null }),
   ]);
+  const hasSources = (sources.data ?? []).length > 0;
+  // Reçete boşken yan sütun (tahmini maliyet, dağılım, miktarlar) gösterilmez: ana kart zaten
+  // "reçete yok" diyor; aynı mesajı ikinci kez göstermek yerine ana kart tam genişlik kullanır.
+  const showSide = Boolean(data.simError || sim?.has_bom);
   const lineByMaterial = new Map((sim?.lines ?? []).map((l) => [l.material_id, l]));
   const materialById = new Map((materials.data ?? []).map((m) => [m.id, m]));
   const rows = bom.data ?? [];
@@ -45,12 +90,12 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
     : null;
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className={showSide ? "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]" : "grid grid-cols-1 gap-4"}>
       <div className="grid min-w-0 content-start gap-4">
         <Card
           title="Reçete (BOM) — 1 adet için"
           icon={ListTree}
-          description="Girilen miktar, malzemenin temel birimine çevrilerek saklanır (ör. 250 g = 0,25 kg)."
+          description="Miktar seçilen birimle girilir ve malzemenin temel biriminde saklanır (ör. kütlede temel birim gramdır: 0,25 kg → 250 g)."
           padded={false}
           actions={rows.length ? <span className="text-xs text-ink-muted">{fmtInt(rows.length)} kalem</span> : null}
         >
@@ -58,7 +103,11 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
             <ErrorState message={bom.error} compact />
           ) : rows.length === 0 ? (
             <EmptyState title="Bu varyantın reçetesi yok" compact>
-              {isAdmin ? "Aşağıdaki formdan malzeme ekleyin veya başka bir varyantın reçetesini kopyalayın." : "Yönetici reçete tanımladığında burada görünür."}
+              {!isAdmin
+                ? "Yönetici reçete tanımladığında burada görünür."
+                : hasSources
+                  ? "Aşağıdaki formdan malzeme ekleyin veya reçetesi olan başka bir varyantın reçetesini kopyalayın."
+                  : "Aşağıdaki formdan malzeme ekleyin."}
             </EmptyState>
           ) : (
             <>
@@ -70,7 +119,9 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                       <th className="num" title="Girilen miktar; altında temel birimdeki karşılığı">
                         Miktar (1 adet)
                       </th>
-                      <th className="num">Birim maliyet (USD)</th>
+                      <th className="num" title="Malzemenin güncel ortalama maliyeti, gösterim birimi başına">
+                        Birim maliyet (USD)
+                      </th>
                       <th className="num">Satır maliyeti</th>
                       <th className="num" title="Tahmini reçete maliyeti içindeki pay">
                         Pay
@@ -102,7 +153,7 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                             ) : null}
                           </td>
                           <td className="num">
-                            {line && line.unit_cost_usd !== null ? `${fmtUnitMoney(line.unit_cost_usd, "USD")} / ${line.base_unit}` : "—"}
+                            {line ? materialUnitCost(line) : "—"}
                             {line?.cost_basis === "last_purchase" ? <div className="text-xs text-ink-muted">son alış (stok yok)</div> : null}
                             {line?.cost_basis === "none" ? <div className="text-xs text-amber-700">maliyet yok</div> : null}
                           </td>
@@ -162,7 +213,7 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                           <span className="text-ink-muted">({fmtUnitMoney(line?.line_cost_try, "TRY")})</span>
                         </div>
                         <div className="text-xs text-ink-muted">
-                          {line && line.unit_cost_usd !== null ? `${fmtUnitMoney(line.unit_cost_usd, "USD")} / ${line.base_unit}` : "Maliyet yok"}
+                          {line && line.unit_cost_usd !== null ? materialUnitCost(line) : "Maliyet yok"}
                           {lineUsd !== null && totalUsd > 0 ? ` · pay %${((lineUsd / totalUsd) * 100).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}` : ""}
                           {b.note ? ` · ${b.note}` : ""}
                         </div>
@@ -198,8 +249,14 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
                 Malzeme ekle / miktarı güncelle
               </h3>
               <p className="mb-3 text-xs text-ink-muted">Reçetede zaten olan malzeme seçilirse miktarı güncellenir.</p>
-              {materials.error ? (
-                <ErrorState message={materials.error} compact />
+              {materials.error || units.error ? (
+                <ErrorState
+                  message={(materials.error ?? units.error) as string}
+                  compact
+                  title={materials.error ? "Malzeme listesi yüklenemedi" : "Birim listesi yüklenemedi"}
+                />
+              ) : (units.data ?? []).length === 0 ? (
+                <Alert tone="warning">Ölçü birimi tanımı bulunamadı; reçete satırı eklemek için birimler gerekir.</Alert>
               ) : (materials.data ?? []).length === 0 ? (
                 <Alert tone="info">Önce Hammadde ekranından malzeme tanımlayın.</Alert>
               ) : (
@@ -215,87 +272,83 @@ export async function VariantBomTab({ ctx, data, isAdmin }: { ctx: AuthContext; 
           ) : null}
         </Card>
 
-        {isAdmin && (siblings.data ?? []).length > 0 ? (
-          <Card title="Başka varyantın reçetesini kopyala" icon={Copy} description="Bu varyantın mevcut reçetesi silinir ve seçilen varyantın reçetesi aynen kopyalanır.">
-            <ActionForm
-              action={copyBom}
-              confirmMessage="Bu varyantın mevcut reçetesi silinip seçilen varyantın reçetesi kopyalanacak. Devam edilsin mi?"
-              className="flex flex-wrap items-end gap-3"
-            >
-              <input type="hidden" name="variant_id" value={variant.id} />
-              <label className="block min-w-0 flex-1 basis-64">
-                <span className="label">Kaynak varyant</span>
-                <select className="input" name="from_variant_id" defaultValue="">
-                  <option value="">Seçin…</option>
-                  {(siblings.data ?? []).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.display_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <SubmitButton variant="secondary">Kopyala</SubmitButton>
-            </ActionForm>
+        {/* Kaynak yoksa (başka hiçbir varyantın reçetesi yok) kart gösterilmez. */}
+        {isAdmin && (sources.error || hasSources) ? (
+          <Card
+            title="Başka varyantın reçetesini kopyala"
+            icon={Copy}
+            description="Yalnız reçetesi olan varyantlar listelenir. Bu varyantın mevcut reçetesi silinir ve seçilen reçete aynen kopyalanır."
+          >
+            {sources.error ? (
+              <ErrorState message={sources.error} compact title="Kopyalanabilecek reçeteler yüklenemedi" />
+            ) : (
+              <CopyBomForm variantId={variant.id} groups={sources.data ?? []} />
+            )}
           </Card>
         ) : null}
       </div>
 
-      <div className="grid min-w-0 content-start items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
-        <Card title="Tahmini reçete maliyeti" description="Güncel hareketli ağırlıklı ortalama malzeme maliyetiyle, 1 adet">
-          {data.simError ? (
-            <ErrorState message={data.simError} compact />
-          ) : sim?.has_bom ? (
-            <>
-              <p className="text-2xl font-semibold text-ink tabular-nums">{fmtUnitMoney(sim.unit_cost_usd, "USD")}</p>
-              <p className="mb-3 text-xs text-ink-muted">TL karşılığı (kayıt değeri): {fmtUnitMoney(sim.unit_cost_try, "TRY")}</p>
-              <DefinitionList
-                columns={1}
-                items={[
-                  ["Tanımlı satış fiyatı", fmtMoney(e.sale_price, e.currency)],
-                  ["Fiyat − tahmini maliyet", margin ? fmtUnitMoney(margin.diff, e.currency) : "—"],
-                  ["Birim üretim süresi", fmtMinutes(e.unit_production_minutes)],
-                  ["Mevcut hammaddeyle üretilebilir", `${fmtInt(sim.max_producible)} adet`],
-                ]}
-              />
-              {!sim.cost_complete ? (
-                <Alert tone="warning" className="mt-3">
-                  Bazı malzemelerin henüz alış kaydı olmadığı için maliyet eksik hesaplandı.
-                </Alert>
-              ) : null}
-              <p className="mt-3 text-xs text-ink-muted">
-                Gerçekleşmiş parti maliyeti değildir; gerçek maliyet üretim başlatıldığında partiye sabitlenir.
-              </p>
-              <ButtonLink href={`/simulasyon?varyant=${variant.id}&adet=1`} variant="secondary" size="sm" className="mt-3">
-                <Calculator aria-hidden />
-                Simülasyonda aç
-              </ButtonLink>
-            </>
-          ) : (
-            <EmptyState title="Reçete boş" compact>
-              Malzeme eklendiğinde tahmini maliyet burada hesaplanır.
-            </EmptyState>
-          )}
-        </Card>
-
-        {sim?.has_bom && share.length > 0 ? (
-          <Card title="Maliyet dağılımı" icon={PieChart} description="Reçete satırlarının tahmini maliyeti (USD, 1 adet)">
-            <CostShareChart data={share} total={totalUsd} />
+      {showSide ? (
+        <div className="grid min-w-0 content-start items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
+          <Card title="Tahmini reçete maliyeti" description="Güncel hareketli ağırlıklı ortalama malzeme maliyetiyle, 1 adet">
+            {data.simError ? (
+              <ErrorState message={data.simError} compact />
+            ) : sim?.has_bom ? (
+              <>
+                <p className="text-2xl font-semibold text-ink tabular-nums">{fmtUnitMoney(sim.unit_cost_usd, "USD")}</p>
+                <p className="mb-3 text-xs text-ink-muted">TL karşılığı (kayıt değeri): {fmtUnitMoney(sim.unit_cost_try, "TRY")}</p>
+                <DefinitionList
+                  columns={1}
+                  items={[
+                    ["Tanımlı satış fiyatı", fmtMoney(e.sale_price, e.currency)],
+                    ["Fiyat − tahmini maliyet", margin ? fmtUnitMoney(margin.diff, e.currency) : "—"],
+                    ["Birim üretim süresi", fmtMinutes(e.unit_production_minutes)],
+                    ["Mevcut hammaddeyle üretilebilir", `${fmtInt(sim.max_producible)} adet`],
+                  ]}
+                />
+                {!sim.cost_complete ? (
+                  <Alert tone="warning" className="mt-3">
+                    Bazı malzemelerin henüz alış kaydı olmadığı için maliyet eksik hesaplandı.
+                  </Alert>
+                ) : null}
+                <p className="mt-3 text-xs text-ink-muted">
+                  Gerçekleşmiş parti maliyeti değildir; gerçek maliyet üretim başlatıldığında partiye sabitlenir.
+                </p>
+                <ButtonLink href={`/simulasyon?varyant=${variant.id}&adet=1`} variant="secondary" size="sm" className="mt-3">
+                  <Calculator aria-hidden />
+                  Simülasyonda aç
+                </ButtonLink>
+              </>
+            ) : null}
           </Card>
-        ) : null}
 
-        {sim?.has_bom ? (
-          <Card title="Temel miktarlar" description={`${product.name} — ${variant.name}, 1 adet`}>
-            <ul className="space-y-1.5 text-[13px]">
-              {sim.lines.map((l) => (
-                <li key={l.material_id} className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 text-ink-soft">{l.name}</span>
-                  <span className="shrink-0 font-medium text-ink tabular-nums">{fmtQty(l.qty_per_unit, l.display_factor, l.display_unit, 4)}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        ) : null}
-      </div>
+          {sim?.has_bom && share.length > 0 ? (
+            <Card title="Maliyet dağılımı" icon={PieChart} description="Reçete satırlarının tahmini maliyeti (USD, 1 adet)">
+              <CostShareChart data={share} total={totalUsd} />
+            </Card>
+          ) : null}
+
+          {sim?.has_bom ? (
+            <Card title="Miktarlar (gösterim birimi)" description={`${product.name} — ${variant.name}, 1 adet · temel birim karşılığı altında`}>
+              <ul className="space-y-1.5 text-[13px]">
+                {sim.lines.map((l) => (
+                  <li key={l.material_id} className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 text-ink-soft">{l.name}</span>
+                    <span className="shrink-0 text-right tabular-nums">
+                      <span className="font-medium text-ink">{fmtQty(l.qty_per_unit, l.display_factor, l.display_unit, 4)}</span>
+                      {l.display_unit !== l.base_unit ? (
+                        <span className="block text-xs text-ink-muted">
+                          = {fmtNum(l.qty_per_unit, 6)} {l.base_unit}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

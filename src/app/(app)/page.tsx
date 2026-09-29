@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ButtonLink, Card, ErrorState, MetricRow, PageHeader, StatCard, type Tone } from "@/components/ui";
+import type { ReactNode } from "react";
+import { ButtonLink, Card, ErrorState, MetricRow, PageHeader, type Tone } from "@/components/ui";
 import { LinkSegmented } from "@/components/ui/list";
 import { requireMember } from "@/lib/auth";
 import { fmtInt, fmtMoney, fmtNum, fmtPct, pctChange, todayTr } from "@/lib/format";
@@ -28,6 +29,7 @@ import { BatchCostChart, type CostBatch } from "./_dashboard/BatchCostChart";
 import {
   dateSpan,
   filterStockRows,
+  hasHistory,
   loadAll,
   riskRows,
   salesByProduct,
@@ -42,25 +44,26 @@ import { PeriodBar } from "./_dashboard/PeriodBar";
 import { SalesTrendChart } from "./_dashboard/SalesTrendChart";
 import { ShelfSummary } from "./_dashboard/ShelfSummary";
 import { ShelfValueChart } from "./_dashboard/ShelfValueChart";
+import { STAT_GRID, StatTile, StatTileError } from "./_dashboard/StatTile";
 import { StockTable, type OpeningInfo } from "./_dashboard/StockTable";
 import { TopProductsChart } from "./_dashboard/TopProductsChart";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-/** Sorgu hatasında özet kartı: değer "0" gösterilmez, hata açıkça yazılır. */
-function StatError({ label, scope, icon: Icon, message }: { label: string; scope: string; icon: LucideIcon; message: string }) {
-  return (
-    <div className="card p-4" role="alert">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs font-medium tracking-wide text-ink-muted uppercase">{label}</p>
-        <span className="rounded bg-canvas px-1.5 py-px text-[10.5px] font-medium text-ink-muted">{scope}</span>
-      </div>
-      <p className="mt-2.5 flex items-center gap-1.5 text-sm font-medium text-chart-red">
-        <Icon className="size-4" aria-hidden />
-        Veri yüklenemedi
-      </p>
-      <p className="mt-1 text-xs text-ink-muted">{message}</p>
-    </div>
+/** Üretimde parti yokken (veya az iken) "Devam eden üretim" kartında gösterilen son tamamlanan parti sayısı */
+const RECENT_COMPLETED = 5;
+
+/** Kart değeri: kuruşsuz tutar (dar kartta sığar); tam tutar ipucunda. */
+function money0(v: number | string | null | undefined) {
+  return <span title={fmtMoney(v, "TRY")}>{fmtMoney(v, "TRY", 0)}</span>;
+}
+
+/** Dashboard dönemini başka bir listeye taşır: hazır dönem ?donem=…, özel aralık ?bas&bit (+ donem=ozel). */
+function periodHref(basePath: string, key: string, from: string, to: string, extra: Record<string, string | null> = {}) {
+  return hrefWith(
+    basePath,
+    {},
+    { donem: key === "ozel" ? "ozel" : key, bas: key === "ozel" ? from : null, bit: key === "ozel" ? to : null, ...extra },
   );
 }
 
@@ -125,7 +128,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     load(
       sb
         .from("v_deliveries")
-        .select("id, delivery_no, delivered_on, display_name, quantity, status, sold_qty, remaining_qty")
+        .select("id, delivery_no, delivered_on, display_name, quantity, status, sold_qty, remaining_qty", { count: "exact" })
         .order("delivered_on", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(6)
@@ -134,7 +137,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     load(
       sb
         .from("v_sales")
-        .select("id, sale_no, sold_on, customer_name, total_quantity, revenue_try, status, items_summary")
+        .select("id, sale_no, sold_on, customer_name, total_quantity, revenue_try, status, items_summary", { count: "exact" })
         .order("sold_on", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(6)
@@ -143,9 +146,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   ]);
 
   // Açılış stoğunun stok tarihleri (Heatemp rafındaki katmanlar): veri kapsamı notu için.
+  // Hata yutulmaz: tarih okunamazsa bilgi kutusunda açıkça yazılır.
+  let openingDateError: string | null = openingRes.error;
   const openingIds = openingRes.data?.map((b) => b.id) ?? [];
   const openingDates: string[] = [];
-  for (let i = 0; i < openingIds.length; i += 150) {
+  for (let i = 0; !openingDateError && i < openingIds.length; i += 150) {
     const r = await load(
       sb
         .from("v_heatemp_shelf")
@@ -153,8 +158,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         .in("batch_id", openingIds.slice(i, i + 150))
         .returns<{ received_on: string }[]>(),
     );
-    if (r.error) break;
-    openingDates.push(...(r.data ?? []).map((x) => x.received_on));
+    if (r.error) openingDateError = r.error;
+    else openingDates.push(...(r.data ?? []).map((x) => x.received_on));
   }
 
   // --- Satış dönemi ---
@@ -164,14 +169,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const margin = cur.revenue > 0 ? (cur.profit / cur.revenue) * 100 : null;
   const cmp = `önceki ${fmtInt(period.days)} güne göre`;
   const series = salesSeries(daily, period, period.granularity);
-  const salesHref = `/satislar?bas=${period.from}&bit=${period.to}`;
+  // Seçilen dönem Satışlar ve Kasa'ya taşınır: hazır dönem ?donem=…, özel aralık ?bas&bit.
+  const salesHref = periodHref("/satislar", period.key, period.from, period.to);
+  const kasaHref = periodHref("/kasa", period.key, period.from, period.to, { gorunum: first(sp.gorunum) || null });
   const periodLabel = period.label;
 
   // --- Stok ---
   const overview = overviewRes.data ?? [];
   const s = summaryRes.data;
   const risk = riskRows(overview);
-  const criticalCount = risk.filter((r) => r.stock_status === "critical").length;
+  const criticalRows = risk.filter((r) => r.stock_status === "critical");
+  const criticalCount = criticalRows.length;
+  // Kritik sayısının çoğu hiç üretilmemiş katalog varyantı olabilir: stok geçmişi olanlar ayrıca yazılır.
+  const criticalNoHistory = criticalRows.filter((r) => !hasHistory(r)).length;
   const lowCount = risk.length - criticalCount;
   const wip = wipRes.data ?? [];
   const wipQty = wip.reduce((a, b) => a + Number(b.quantity), 0);
@@ -183,6 +193,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         qty: overview.reduce((a, r) => a + r.opening_qty, 0),
         value_try: overview.reduce((a, r) => a + Number(r.opening_value_try), 0),
         span: dateSpan(openingDates),
+        spanError: openingDateError,
       };
 
   const tableRows = overviewRes.error ? [] : filterStockRows(overview, values, lp.sort, lp.dir);
@@ -210,7 +221,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     label: string,
     icon: LucideIcon,
     tone: Tone,
-    value: string,
+    value: ReactNode,
     unit: string | undefined,
     curV: number,
     prevV: number,
@@ -218,9 +229,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     href: string,
   ) =>
     dailyRes.error ? (
-      <StatError key={label} label={label} scope="Seçilen dönem" icon={AlertOctagon} message={dailyRes.error} />
+      <StatTileError key={label} label={label} scope="Seçilen dönem" icon={AlertOctagon} message={dailyRes.error} />
     ) : (
-      <StatCard
+      <StatTile
         key={label}
         label={label}
         scope="Seçilen dönem"
@@ -265,112 +276,119 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       <PeriodBar period={period} today={today} values={values} />
 
-      {/* 1) Özet kartları: dönem (değişimli) + güncel stok (değişimsiz) */}
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {salesStat(
-          "Ciro",
-          Banknote,
-          "blue",
-          fmtMoney(cur.revenue, "TRY"),
-          undefined,
-          cur.revenue,
-          prev.revenue,
-          `${fmtInt(cur.sales)} satış · yalnız gerçekleşen satışlar`,
-          salesHref,
-        )}
-        {salesStat(
-          "Brüt kâr",
-          TrendingUp,
-          "teal",
-          fmtMoney(cur.profit, "TRY"),
-          undefined,
-          cur.profit,
-          prev.profit,
-          `Marj ${fmtPct(margin)} · FIFO parti maliyetiyle gerçekleşmiş`,
-          "/kasa",
-        )}
-        {salesStat(
-          "Satılan adet",
-          ShoppingCart,
-          "violet",
-          fmtInt(cur.quantity),
-          "adet",
-          cur.quantity,
-          prev.quantity,
-          `Günlük ortalama ${fmtNum(cur.quantity / period.days, 1)} adet`,
-          salesHref,
-        )}
-        {wipRes.error ? (
-          <StatError label="Devam eden üretim" scope="Güncel stok" icon={AlertOctagon} message={wipRes.error} />
-        ) : (
-          <StatCard
-            label="Devam eden üretim"
-            scope="Güncel stok"
-            value={fmtInt(wip.length)}
-            unit="parti"
-            icon={Factory}
-            tone="amber"
-            description={wip.length ? `Toplam ${fmtInt(wipQty)} adet üretimde` : "Şu an üretimde parti yok"}
-            href="/uretim?durum=in_production"
-          />
-        )}
-        {summaryRes.error || !s ? (
-          <>
-            {["Heatemp rafı", "Mekonsis rafı", "Hammadde stok değeri"].map((l) => (
-              <StatError
-                key={l}
-                label={l}
+      {/* 1) Özet kartları: dönem (değişimli) + güncel stok (değişimsiz). Sütun sayısı ekran değil, içerik alanı
+          genişliğine göre (yan menü açık/kapalı): dar alanda 2, ≥ 880 px'te 4 sütun (iki satır). */}
+      <div className="@container">
+        <div className={STAT_GRID}>
+          {salesStat(
+            "Ciro",
+            Banknote,
+            "blue",
+            money0(cur.revenue),
+            undefined,
+            cur.revenue,
+            prev.revenue,
+            `${fmtInt(cur.sales)} satış · yalnız gerçekleşenler`,
+            salesHref,
+          )}
+          {salesStat(
+            "Brüt kâr",
+            TrendingUp,
+            "teal",
+            money0(cur.profit),
+            undefined,
+            cur.profit,
+            prev.profit,
+            `Marj ${fmtPct(margin)} · FIFO parti maliyetiyle`,
+            kasaHref,
+          )}
+          {salesStat(
+            "Satılan adet",
+            ShoppingCart,
+            "violet",
+            fmtInt(cur.quantity),
+            "adet",
+            cur.quantity,
+            prev.quantity,
+            `Günlük ortalama ${fmtNum(cur.quantity / period.days, 1)} adet`,
+            salesHref,
+          )}
+          {wipRes.error ? (
+            <StatTileError label="Devam eden üretim" scope="Güncel stok" icon={AlertOctagon} message={wipRes.error} />
+          ) : (
+            <StatTile
+              label="Devam eden üretim"
+              scope="Güncel stok"
+              value={fmtInt(wip.length)}
+              unit="parti"
+              icon={Factory}
+              tone="amber"
+              description={wip.length ? `Toplam ${fmtInt(wipQty)} adet üretimde` : "Şu an üretimde parti yok"}
+              href={wip.length ? "/uretim?durum=in_production" : "/uretim"}
+            />
+          )}
+          {summaryRes.error || !s ? (
+            <>
+              {["Heatemp rafı", "Mekonsis rafı", "Hammadde stoğu"].map((l) => (
+                <StatTileError
+                  key={l}
+                  label={l}
+                  scope="Güncel stok"
+                  icon={AlertOctagon}
+                  message={summaryRes.error ?? "Finansal özet bulunamadı."}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+              <StatTile
+                label="Heatemp rafı"
                 scope="Güncel stok"
-                icon={AlertOctagon}
-                message={summaryRes.error ?? "Finansal özet bulunamadı."}
+                value={money0(s.heatemp_value_try)}
+                icon={Warehouse}
+                tone="blue"
+                description={`${fmtInt(s.heatemp_qty)} adet · maliyet değeri`}
+                href="/rafim"
               />
-            ))}
-          </>
-        ) : (
-          <>
-            <StatCard
-              label="Heatemp rafı"
+              <StatTile
+                label="Mekonsis rafı"
+                scope="Güncel stok"
+                value={money0(s.mekonsis_value_try)}
+                icon={Store}
+                tone="teal"
+                description={`${fmtInt(s.mekonsis_qty)} adet · maliyet, Heatemp'in varlığı`}
+                href="/mekonsis"
+              />
+              <StatTile
+                label="Hammadde stoğu"
+                scope="Güncel stok"
+                value={money0(s.material_value_try)}
+                icon={Boxes}
+                tone="sky"
+                description="Hammadde ve monte edilmemiş komponentler"
+                href="/hammadde"
+              />
+            </>
+          )}
+          {overviewRes.error ? (
+            <StatTileError label="Kritik stok" scope="Güncel stok" icon={AlertOctagon} message={overviewRes.error} />
+          ) : (
+            <StatTile
+              label="Kritik stok"
               scope="Güncel stok"
-              value={fmtMoney(s.heatemp_value_try, "TRY")}
-              icon={Warehouse}
-              tone="blue"
-              description={`${fmtInt(s.heatemp_qty)} adet · maliyet değeri`}
-              href="/rafim"
+              value={fmtInt(criticalCount)}
+              unit="varyant"
+              icon={AlertTriangle}
+              tone="red"
+              description={
+                criticalNoHistory > 0
+                  ? `${fmtInt(criticalCount - criticalNoHistory)} stok geçmişli, ${fmtInt(criticalNoHistory)} hiç girişi yok · ${fmtInt(lowCount)} minimum altı`
+                  : `${fmtInt(lowCount)} varyant minimum altında · aktif varyantlar`
+              }
+              href={riskHref}
             />
-            <StatCard
-              label="Mekonsis rafı"
-              scope="Güncel stok"
-              value={fmtMoney(s.mekonsis_value_try, "TRY")}
-              icon={Store}
-              tone="teal"
-              description={`${fmtInt(s.mekonsis_qty)} adet · Heatemp'in varlığı`}
-              href="/mekonsis"
-            />
-            <StatCard
-              label="Hammadde stok değeri"
-              scope="Güncel stok"
-              value={fmtMoney(s.material_value_try, "TRY")}
-              icon={Boxes}
-              tone="sky"
-              description="Hammadde ve monte edilmemiş komponentler"
-              href="/hammadde"
-            />
-          </>
-        )}
-        {overviewRes.error ? (
-          <StatError label="Kritik stok" scope="Güncel stok" icon={AlertOctagon} message={overviewRes.error} />
-        ) : (
-          <StatCard
-            label="Kritik stok"
-            scope="Güncel stok"
-            value={fmtInt(criticalCount)}
-            unit="varyant"
-            icon={AlertTriangle}
-            tone="red"
-            description={`${fmtInt(lowCount)} varyant minimum altında · aktif varyantlar`}
-            href={riskHref}
-          />
-        )}
+          )}
+        </div>
       </div>
 
       {/* 2) Seçilen dönem grafikleri */}
@@ -395,7 +413,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                     {
                       label: "Satış başına ciro",
                       value: cur.sales > 0 ? fmtMoney(cur.revenue / cur.sales, "TRY") : "—",
-                      hint: `Önceki dönem ciro ${fmtMoney(prev.revenue, "TRY")}`,
+                      hint: `Önceki dönem ${prev.sales > 0 ? fmtMoney(prev.revenue / prev.sales, "TRY") : "—"}`,
                     },
                   ]}
                 />
@@ -476,7 +494,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <RiskList rows={{ ...overviewRes, data: overviewRes.error ? null : risk }} allHref={riskHref} />
         </div>
         <div className="min-w-0">
-          <WipList rows={wipRes} isAdmin={isAdmin} />
+          <WipList
+            rows={wipRes}
+            isAdmin={isAdmin}
+            recent={costRes.error ? null : (costRes.data ?? []).slice(-RECENT_COMPLETED).reverse()}
+          />
         </div>
         <div className="min-w-0">
           <DeliveryList rows={deliveriesRes} isAdmin={isAdmin} />

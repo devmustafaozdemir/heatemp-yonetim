@@ -1,12 +1,13 @@
 import { Boxes, PackageOpen, Store, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { StockStatusBadge } from "@/components/StockStatus";
-import { Card, ErrorState, ProgressBar, StatCard, TableWrap } from "@/components/ui";
+import { Card, ErrorState, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
 import { fmtInt, fmtMoney } from "@/lib/format";
 import { parseListParams, type SearchParams } from "@/lib/list-params";
 import { load } from "@/lib/query";
 import type { Product, VariantOverview, VariantView } from "@/lib/types";
+import { StatTile, StockProgress } from "../_components/bits";
 import { MOVEMENT_SORTABLE, StockMovementsCard } from "../_components/Movements";
 
 export async function StockTab({ ctx, product, variants, sp }: { ctx: AuthContext; product: Product; variants: VariantView[]; sp: SearchParams }) {
@@ -25,8 +26,8 @@ export async function StockTab({ ctx, product, variants, sp }: { ctx: AuthContex
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            <StatTile
               label="Heatemp rafı"
               scope="Güncel stok"
               value={fmtInt(total("heatemp_qty"))}
@@ -35,7 +36,7 @@ export async function StockTab({ ctx, product, variants, sp }: { ctx: AuthContex
               tone="blue"
               description={`Parti maliyetiyle ${fmtMoney(total("heatemp_value_try"), "TRY")}`}
             />
-            <StatCard
+            <StatTile
               label="Mekonsis rafı"
               scope="Güncel stok"
               value={fmtInt(total("mekonsis_qty"))}
@@ -44,7 +45,7 @@ export async function StockTab({ ctx, product, variants, sp }: { ctx: AuthContex
               tone="teal"
               description={`Teslim edildi, satılmadı · ${fmtMoney(total("mekonsis_value_try"), "TRY")}`}
             />
-            <StatCard
+            <StatTile
               label="Toplam kalan"
               scope="Güncel stok"
               value={fmtInt(total("total_remaining"))}
@@ -53,7 +54,7 @@ export async function StockTab({ ctx, product, variants, sp }: { ctx: AuthContex
               tone="brand"
               description={`Mamul stok değeri ${fmtMoney(total("finished_value_try"), "TRY")}`}
             />
-            <StatCard
+            <StatTile
               label="Açılış stoğu"
               value={fmtInt(total("opening_qty"))}
               unit="adet giriş"
@@ -107,12 +108,7 @@ export async function StockTab({ ctx, product, variants, sp }: { ctx: AuthContex
                           {fmtInt(r.total_remaining)} / {fmtInt(r.target_stock)}
                         </span>
                         <div className="mt-1 ml-auto w-20">
-                          <ProgressBar
-                            value={r.total_remaining}
-                            max={r.target_stock}
-                            tone={r.stock_status === "ok" ? "teal" : r.stock_status === "critical" ? "red" : "amber"}
-                            label={`${r.variant_name}: stok / hedef`}
-                          />
+                          <StockProgress value={r.total_remaining} max={r.target_stock} status={r.stock_status} label={`${r.variant_name}: stok / hedef`} />
                         </div>
                       </td>
                       <td className="whitespace-nowrap">

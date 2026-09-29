@@ -4,7 +4,7 @@ import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Search, Truck } from "luc
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { BatchStatusBadge } from "@/components/status";
-import { Badge, Button, cx, EmptyState, ProgressBar, TableWrap } from "@/components/ui";
+import { Badge, Button, cx, EmptyState, TableWrap } from "@/components/ui";
 import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { useOpenDelivery } from "./DeliveryDrawer";
 import type { ShelfGroup, ShelfKind } from "./types";
@@ -66,13 +66,16 @@ export function ShelfTable({
             g.display_name.toLocaleLowerCase("tr").includes(needle) ||
             g.product_code.toLocaleLowerCase("tr").includes(needle) ||
             g.variant_code.toLocaleLowerCase("tr").includes(needle) ||
-            g.layers.some((l) => l.batch_no.toLocaleLowerCase("tr").includes(needle) || (l.delivery_no ?? "").toLocaleLowerCase("tr").includes(needle)),
+            g.layers.some(
+              (l) => l.batch_no.toLocaleLowerCase("tr").includes(needle) || (l.delivery_no ?? "").toLocaleLowerCase("tr").includes(needle),
+            ),
         )
       : groups;
     const sorted = [...list];
     if (sort === "value") sorted.sort((a, b) => b.value_try - a.value_try);
     else if (sort === "qty") sorted.sort((a, b) => b.remaining - a.remaining);
-    else if (sort === "oldest") sorted.sort((a, b) => a.oldest.localeCompare(b.oldest) || a.display_name.localeCompare(b.display_name, "tr"));
+    else if (sort === "oldest")
+      sorted.sort((a, b) => a.oldest.localeCompare(b.oldest) || a.display_name.localeCompare(b.display_name, "tr"));
     return sorted;
   }, [groups, q, sort]);
 
@@ -107,7 +110,12 @@ export function ShelfTable({
         </div>
         <label className="flex items-center gap-1.5">
           <span className="sr-only">Sıralama</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="input input-sm w-auto pr-8" aria-label="Sıralama">
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="input input-sm w-auto pr-8"
+            aria-label="Sıralama"
+          >
             {SORTS.map((s) => (
               <option key={s.key} value={s.key}>
                 {s.label}
@@ -135,22 +143,19 @@ export function ShelfTable({
           Arama metnini değiştirin veya temizleyin.
         </EmptyState>
       ) : (
-        <TableWrap>
+        <TableWrap className="relative">
           <table className="table-base">
             <thead>
               <tr>
                 <th>Ürün / varyant · parti</th>
-                <th>{labels.date}</th>
-                <th className="num hidden md:table-cell">{labels.in}</th>
-                <th className="num hidden md:table-cell">{labels.out}</th>
-                <th className="num">{labels.rem}</th>
-                <th className="num hidden sm:table-cell">Birim maliyet (TL)</th>
+                <th className="hidden sm:table-cell">{labels.date}</th>
+                <th className="num hidden min-[87.5rem]:table-cell">{labels.in}</th>
+                <th className="num hidden min-[87.5rem]:table-cell">{labels.out}</th>
+                <th className="num hidden sm:table-cell">{labels.rem}</th>
+                <th className="num hidden xl:table-cell">Birim maliyet (TL)</th>
                 <th className="num">{labels.value}</th>
-                <th className="hidden lg:table-cell" title="Rafın toplam maliyet değeri içindeki pay">
-                  Pay
-                </th>
                 {showAction ? (
-                  <th>
+                  <th className="hidden sm:table-cell">
                     <span className="sr-only">İşlem</span>
                   </th>
                 ) : null}
@@ -159,11 +164,11 @@ export function ShelfTable({
             <tbody>
               {visible.map((g) => {
                 const open = expanded.has(g.variant_id);
-                const share = pct(g.value_try, totals.value_try);
+                const shareText = pct(g.value_try, totals.value_try).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
                 return (
                   <Fragment key={g.variant_id}>
                     <tr className={cx(initialVariant === g.variant_id && "bg-brand-50/60")}>
-                      <td className="min-w-[15rem]">
+                      <td className="min-w-[10rem] sm:min-w-[14rem] min-[87.5rem]:min-w-[19rem]">
                         <div className="flex items-start gap-1.5">
                           <button
                             type="button"
@@ -179,44 +184,52 @@ export function ShelfTable({
                               {g.display_name}
                             </Link>
                             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
-                              <span className="code text-ink-muted">
-                                {g.product_code} · {g.variant_code}
-                              </span>
+                              <span className="code hidden text-ink-muted sm:inline">{g.variant_code}</span>
                               <span>{fmtInt(g.layers.length)} parti</span>
+                              <span className="sm:hidden">en eski {fmtDate(g.oldest)}</span>
                               {g.opening_qty > 0 ? (
                                 <Badge tone="violet" title="Sistem öncesi stoktan gelen adet (üretim sayılmaz)">
                                   Açılış stoğu {fmtInt(g.opening_qty)}
                                 </Badge>
                               ) : null}
                             </div>
+                            {showAction ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="soft"
+                                className="mt-2 sm:hidden"
+                                onClick={() => openDelivery?.(g.variant_id)}
+                                aria-label={`${g.display_name} için teslimat formunu aç`}
+                                aria-haspopup="dialog"
+                              >
+                                <Truck aria-hidden />
+                                Teslim et
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap">
+                      <td className="hidden whitespace-nowrap sm:table-cell">
                         <span className="block text-[11px] text-ink-muted">en eski</span>
                         {fmtDate(g.oldest)}
                       </td>
-                      <td className="num hidden md:table-cell">{fmtInt(g.in_qty)}</td>
-                      <td className="num hidden md:table-cell">{fmtInt(g.out_qty)}</td>
-                      <td className="num font-semibold text-ink">{fmtInt(g.remaining)}</td>
-                      <td className="num hidden sm:table-cell">
+                      <td className="num hidden min-[87.5rem]:table-cell">{fmtInt(g.in_qty)}</td>
+                      <td className="num hidden min-[87.5rem]:table-cell">{fmtInt(g.out_qty)}</td>
+                      <td className="num hidden font-semibold text-ink sm:table-cell">{fmtInt(g.remaining)}</td>
+                      <td className="num hidden xl:table-cell">
                         <span className="block text-[11px] text-ink-muted">ort.</span>
-                        {g.remaining > 0 ? fmtUnitMoney(g.value_try / g.remaining, "TRY") : "—"}
+                        {g.remaining > 0 ? fmtMoney(g.value_try / g.remaining, "TRY") : "—"}
                       </td>
-                      <td className="num font-semibold text-ink">
+                      <td className="num font-semibold text-ink" title={`Raf maliyet değerinin %${shareText}'i`}>
                         {fmtMoney(g.value_try, "TRY")}
-                        <span className="block text-[11px] font-normal text-ink-muted">{fmtMoney(g.value_usd, "USD")}</span>
-                      </td>
-                      <td className="hidden w-32 lg:table-cell">
-                        <div className="flex items-center gap-2">
-                          <ProgressBar value={share} max={100} tone={heatemp ? "brand" : "teal"} label={`${g.display_name} raf değer payı`} />
-                          <span className="w-11 shrink-0 text-right text-xs tabular-nums">
-                            %{share.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}
-                          </span>
-                        </div>
+                        <span className="block text-[11px] font-normal text-ink-muted">
+                          <span className="sm:hidden">{fmtInt(g.remaining)} adet</span>
+                          <span className="hidden sm:inline">{fmtMoney(g.value_usd, "USD")}</span> · %{shareText}
+                        </span>
                       </td>
                       {showAction ? (
-                        <td className="text-right whitespace-nowrap">
+                        <td className="hidden text-right whitespace-nowrap sm:table-cell">
                           <Button
                             type="button"
                             size="sm"
@@ -234,7 +247,7 @@ export function ShelfTable({
                     {open
                       ? g.layers.map((l) => (
                           <tr key={l.layer_id} className="bg-canvas/50 text-[12.5px]">
-                            <td className="min-w-[15rem]">
+                            <td className="min-w-[10rem] sm:min-w-[13rem]">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6">
                                 <Link className="link font-mono text-xs" href={`/uretim/${l.batch_id}`} title="Parti detayı">
                                   {l.batch_no}
@@ -248,19 +261,25 @@ export function ShelfTable({
                                     </Link>
                                   </span>
                                 ) : null}
+                                <span className="text-xs text-ink-muted sm:hidden">{fmtDate(l.date)}</span>
                               </div>
                             </td>
-                            <td className="whitespace-nowrap">{fmtDate(l.date)}</td>
-                            <td className="num hidden md:table-cell">{fmtInt(l.in_qty)}</td>
-                            <td className="num hidden md:table-cell">{fmtInt(l.out_qty)}</td>
-                            <td className="num font-medium text-ink">{fmtInt(l.remaining)}</td>
-                            <td className="num hidden sm:table-cell">
+                            <td className="hidden whitespace-nowrap sm:table-cell">{fmtDate(l.date)}</td>
+                            <td className="num hidden min-[87.5rem]:table-cell">{fmtInt(l.in_qty)}</td>
+                            <td className="num hidden min-[87.5rem]:table-cell">{fmtInt(l.out_qty)}</td>
+                            <td className="num hidden font-medium text-ink sm:table-cell">{fmtInt(l.remaining)}</td>
+                            <td className="num hidden xl:table-cell">
                               {fmtUnitMoney(l.unit_cost_try, "TRY")}
                               <span className="block text-[11px] text-ink-muted">{fmtUnitMoney(l.unit_cost_usd, "USD")}</span>
                             </td>
-                            <td className="num">{fmtMoney(l.value_try, "TRY")}</td>
-                            <td className="hidden lg:table-cell" />
-                            {showAction ? <td /> : null}
+                            <td className="num">
+                              {fmtMoney(l.value_try, "TRY")}
+                              <span className="block text-[11px] text-ink-muted sm:hidden">{fmtInt(l.remaining)} adet</span>
+                              <span className="block text-[11px] text-ink-muted max-sm:hidden xl:hidden">
+                                {fmtUnitMoney(l.unit_cost_try, "TRY")}/adet
+                              </span>
+                            </td>
+                            {showAction ? <td className="hidden sm:table-cell" /> : null}
                           </tr>
                         ))
                       : null}
@@ -274,17 +293,22 @@ export function ShelfTable({
                   Toplam
                   {visible.length !== groups.length ? <span className="ml-1 text-xs font-normal text-ink-muted">(tüm raf)</span> : null}
                 </td>
-                <td />
-                <td className="num hidden md:table-cell">{fmtInt(totals.in_qty)}</td>
-                <td className="num hidden md:table-cell">{fmtInt(totals.out_qty)}</td>
-                <td className="num">{fmtInt(totals.remaining)}</td>
-                <td className="num hidden sm:table-cell">{totals.remaining > 0 ? fmtUnitMoney(totals.value_try / totals.remaining, "TRY") : "—"}</td>
+                <td className="hidden sm:table-cell" />
+                <td className="num hidden min-[87.5rem]:table-cell">{fmtInt(totals.in_qty)}</td>
+                <td className="num hidden min-[87.5rem]:table-cell">{fmtInt(totals.out_qty)}</td>
+                <td className="num hidden sm:table-cell">{fmtInt(totals.remaining)}</td>
+                <td className="num hidden xl:table-cell">
+                  <span className="block text-[11px] font-normal text-ink-muted">ort.</span>
+                  {totals.remaining > 0 ? fmtMoney(totals.value_try / totals.remaining, "TRY") : "—"}
+                </td>
                 <td className="num">
                   {fmtMoney(totals.value_try, "TRY")}
-                  <span className="block text-[11px] font-normal text-ink-muted">{fmtMoney(totals.value_usd, "USD")}</span>
+                  <span className="block text-[11px] font-normal text-ink-muted">
+                    <span className="sm:hidden">{fmtInt(totals.remaining)} adet</span>
+                    <span className="hidden sm:inline">{fmtMoney(totals.value_usd, "USD")}</span>
+                  </span>
                 </td>
-                <td className="hidden lg:table-cell" />
-                {showAction ? <td /> : null}
+                {showAction ? <td className="hidden sm:table-cell" /> : null}
               </tr>
             </tfoot>
           </table>

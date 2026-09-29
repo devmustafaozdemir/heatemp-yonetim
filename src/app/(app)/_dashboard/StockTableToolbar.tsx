@@ -31,15 +31,36 @@ export function StockTableToolbar({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [q, setQ] = useState(values.q ?? "");
-  const [lastQ, setLastQ] = useState(values.q ?? "");
+  const urlQ = values.q ?? "";
+  const [q, setQ] = useState(urlQ);
+  // URL'deki q ile kutuyu eşitleme durumu. `own`: bu bileşenin başlattığı, henüz URL'ye yansımamış
+  // gezinmelerin q değerleri (sırayla). URL bunlardan birine döndüğünde değişiklik kendi gezinmemizdir:
+  // kullanıcı bu arada yazmaya devam etmiş olabileceğinden kutuya DOKUNULMAZ (tuş kaybı olmaz).
+  // Yalnız dışarıdan gelen değişiklikte (geri/ileri, başka bağlantı) kutu URL değerine çekilir.
+  const [sync, setSync] = useState<{ url: string; own: string[] }>({ url: urlQ, own: [] });
   const timer = useRef<number | null>(null);
+  // Gidilmek istenen son parametreler. Gezinme tamamlanmadan (URL/props güncellenmeden) art arda
+  // yapılan değişiklikler birbirini silmesin diye her gezinme bunun üzerine kurulur.
+  const intended = useRef<Record<string, string>>(values);
+  // Arama kutusunun anlık değeri (bekleyen zamanlayıcı ve seçim değişiklikleri için).
+  const qNow = useRef(urlQ);
 
-  // URL dışarıdan değişirse (ör. temizle) arama kutusunu eşitle.
-  if ((values.q ?? "") !== lastQ) {
-    setLastQ(values.q ?? "");
-    setQ(values.q ?? "");
+  if (urlQ !== sync.url) {
+    const i = sync.own.indexOf(urlQ);
+    if (i === -1) {
+      setQ(urlQ);
+      setSync({ url: urlQ, own: [] });
+    } else {
+      setSync({ url: urlQ, own: sync.own.slice(i + 1) });
+    }
   }
+
+  // Bekleyen gezinme kalmadığında (ya da URL dışarıdan değiştiğinde) hedefi gerçek URL değerleriyle eşitle.
+  useEffect(() => {
+    if (pending) return;
+    intended.current = values;
+    if (timer.current === null) qNow.current = values.q ?? "";
+  }, [values, pending]);
 
   useEffect(
     () => () => {
@@ -49,14 +70,28 @@ export function StockTableToolbar({
   );
 
   function go(overrides: Record<string, string | null>, replace = false) {
-    const href = hrefWith("/", values, { ...overrides, sayfa: null });
+    // Bekleyen arama zamanlayıcısı iptal edilir; yazılmış arama metni bu gezinmeye eklenir.
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const href = hrefWith("/", intended.current, { q: qNow.current.trim() || null, ...overrides, sayfa: null });
+    const next: Record<string, string> = {};
+    new URLSearchParams(href.split("?")[1] ?? "").forEach((v, k) => (next[k] = v));
+    intended.current = next;
+    const nextQ = next.q ?? "";
+    setSync((st) => (nextQ === st.url && st.own.length === 0 ? st : { ...st, own: [...st.own, nextQ] }));
     startTransition(() => (replace ? router.replace(href, { scroll: false }) : router.push(href, { scroll: false })));
   }
 
   function onSearch(v: string) {
     setQ(v);
+    qNow.current = v;
     if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => go({ q: v.trim() || null }, true), 350);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      go({}, true);
+    }, 350);
   }
 
   const active = FILTER_KEYS.some((k) => values[k]);
@@ -106,7 +141,7 @@ export function StockTableToolbar({
           go({ sirala: sirala || null, yon: yon || null });
         }}
         aria-label="Sıralama"
-        className="input input-sm w-full pr-8 sm:w-auto sm:max-w-full @min-[1024px]:hidden"
+        className="input input-sm w-full pr-8 sm:w-auto sm:max-w-full @min-[900px]:hidden"
       >
         {sortOptions.some((o) => o.value === sortValue) ? null : <option value="">Sırala</option>}
         {sortOptions.map((o) => (
@@ -120,6 +155,7 @@ export function StockTableToolbar({
           type="button"
           onClick={() => {
             setQ("");
+            qNow.current = "";
             go(RESET);
           }}
           className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-soft hover:bg-canvas"

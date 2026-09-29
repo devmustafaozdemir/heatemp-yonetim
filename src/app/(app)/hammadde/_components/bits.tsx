@@ -9,6 +9,7 @@ import {
   Undo2,
   type LucideIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Badge, type BadgeTone } from "@/components/ui";
 import type { MaterialMovement } from "@/lib/types";
 import type { MaterialStockState } from "./types";
@@ -66,5 +67,16 @@ export function MovementBadge({ type }: { type: MovementType }) {
     <Badge tone={m.tone} icon={m.icon}>
       {m.short}
     </Badge>
+  );
+}
+
+/** Kart listelerinde (mobil / tablet) etiketli değer: etiket, değer ve isteğe bağlı alt bilgi. */
+export function ListValue({ label, value, hint }: { label: ReactNode; value: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-ink-muted">{label}</dt>
+      <dd className="mt-0.5 text-[13px] font-semibold break-words text-ink tabular-nums">{value}</dd>
+      {hint ? <dd className="text-xs break-words text-ink-muted tabular-nums">{hint}</dd> : null}
+    </div>
   );
 }

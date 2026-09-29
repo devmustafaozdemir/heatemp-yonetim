@@ -72,7 +72,7 @@ export function TopValueChart({ data, total }: { data: TopValueRow[]; total: num
                     {
                       label: "Stok değeri",
                       value: fmtMoney(p.value, "TRY"),
-                      color: p.kind === "component" ? CHART.sky : CHART.blue,
+                      color: p.kind === "component" ? CHART.teal : CHART.blue,
                     },
                     {
                       label: "USD karşılığı",
@@ -90,7 +90,7 @@ export function TopValueChart({ data, total }: { data: TopValueRow[]; total: num
           />
           <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={20} isAnimationActive={false}>
             {data.map((d) => (
-              <Cell key={d.key} fill={d.kind === "component" ? CHART.sky : CHART.blue} />
+              <Cell key={d.key} fill={d.kind === "component" ? CHART.teal : CHART.blue} />
             ))}
           </Bar>
         </BarChart>
@@ -102,7 +102,7 @@ export function TopValueChart({ data, total }: { data: TopValueRow[]; total: num
             Hammadde
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-sm bg-chart-sky" aria-hidden />
+            <span className="size-2.5 rounded-sm bg-chart-teal" aria-hidden />
             Komponent
           </span>
           <span>TL · alış kurlarıyla tarihsel değer</span>

@@ -7,7 +7,7 @@ import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts"
 import { AXIS_TICK, CHART, ChartFrame, GRID_PROPS, Segmented, TooltipBox } from "@/components/charts/kit";
 import { Card, MetricRow } from "@/components/ui";
 import { CostChange } from "@/components/status";
-import { fmtDate, fmtInt, fmtUnitMoney, type Currency } from "@/lib/format";
+import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney, type Currency } from "@/lib/format";
 
 export interface CostBatch {
   id: string;
@@ -24,8 +24,50 @@ export interface CostBatch {
   unit_cost_try_change_pct: number | null;
 }
 
-const DAY = 86_400_000;
 const SHORT_DATE = new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "Europe/Istanbul" });
+
+/** 1, 2, 2,5, 5 × 10^n adımlarından en yakını ("nice number"). */
+function niceStep(raw: number): number {
+  const exp = Math.floor(Math.log10(raw));
+  const f = raw / 10 ** exp;
+  const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+  return nf * 10 ** exp;
+}
+
+/**
+ * Y ekseni için yuvarlak sınırlar ve eşit aralıklı çizgiler (ör. 4,00 / 4,25 / 4,50 / 4,75 / 5,00).
+ * Veri en üst/alt çizgiye yapışmasın diye aralığın %10'u kadar pay bırakılır; alt sınır 0'ın altına inmez.
+ */
+function niceAxis(min: number, max: number, count = 5): { domain: [number, number]; ticks: number[] } {
+  const span = max - min;
+  const pad = span > 0 ? span * 0.1 : Math.abs(max) * 0.1 || 1;
+  const lo0 = Math.max(0, min - pad);
+  const hi0 = max + pad;
+  const step = niceStep((hi0 - lo0) / (count - 1));
+  const lo = Math.max(0, Math.floor(lo0 / step) * step);
+  const hi = Math.ceil(hi0 / step) * step;
+  const ticks: number[] = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Number(v.toFixed(6)));
+  return { domain: [ticks[0], ticks[ticks.length - 1]], ticks };
+}
+
+/** X ekseni etiketi: parti no ve altında tamamlanma tarihi (partiler tamamlanma sırasıyla eşit aralıklı). */
+function BatchTick(props: { x?: number | string; y?: number | string; payload?: { value?: unknown }; dates: Map<string, string> }) {
+  const no = String(props.payload?.value ?? "");
+  const date = props.dates.get(no);
+  return (
+    <g transform={`translate(${Number(props.x)},${Number(props.y)})`}>
+      <text textAnchor="middle" dy={10} fontSize={11} fill={CHART.axis}>
+        {no}
+      </text>
+      {date ? (
+        <text textAnchor="middle" dy={24} fontSize={10.5} fill={CHART.axis}>
+          {date}
+        </text>
+      ) : null}
+    </g>
+  );
+}
 
 /**
  * Tamamlanmış ÜRETİM partilerinin (açılış stoğu hariç) birim maliyeti, zamana göre.
@@ -60,23 +102,25 @@ export function BatchCostChart({ batches }: { batches: CostBatch[] }) {
       batches
         .filter((b) => b.variant_id === selected?.id)
         .sort((a, b) => a.completed_at.localeCompare(b.completed_at) || a.batch_no.localeCompare(b.batch_no))
-        .map((b) => ({ ...b, t: Date.parse(b.completed_at), cost: Number(currency === "USD" ? b.unit_cost_usd : b.unit_cost_try) })),
+        .map((b) => ({ ...b, cost: Number(currency === "USD" ? b.unit_cost_usd : b.unit_cost_try) })),
     [batches, selected?.id, currency],
   );
   const last = data[data.length - 1];
   const costs = data.map((d) => d.cost);
   const min = costs.length ? Math.min(...costs) : null;
   const max = costs.length ? Math.max(...costs) : null;
-  const tMin = data.length ? data[0].t : 0;
-  const tMax = data.length ? data[data.length - 1].t : 0;
-  const pad = tMax - tMin < 6 * DAY ? 3 * DAY : (tMax - tMin) * 0.04;
+  const axis = min !== null && max !== null ? niceAxis(min, max) : null;
+  // Eksen etiketleri: adım 1 ve üstüyse tam sayı, değilse en az 2 (adım gerektiriyorsa 4'e kadar) ondalık.
+  const step = axis && axis.ticks.length > 1 ? axis.ticks[1] - axis.ticks[0] : 1;
+  const tickDigits = step >= 1 ? 0 : Math.min(4, Math.max(2, (String(Number(step.toFixed(6))).split(".")[1] ?? "").length));
+  const dates = useMemo(() => new Map(data.map((d) => [d.batch_no, SHORT_DATE.format(new Date(d.completed_at))])), [data]);
   const lastPct = last ? (currency === "USD" ? last.unit_cost_usd_change_pct : last.unit_cost_try_change_pct) : null;
 
   return (
     <Card
       title="Parti birim maliyeti"
       icon={LineIcon}
-      description="Tamamlanmış üretim partileri; açılış stoğu partileri dahil değildir."
+      description="Tamamlanmış üretim partileri, tamamlanma sırasıyla (eksende parti no ve tarih); açılış stoğu partileri dahil değildir."
       actions={
         batches.length ? (
           <Segmented<Currency>
@@ -95,15 +139,15 @@ export function BatchCostChart({ batches }: { batches: CostBatch[] }) {
     >
       <div className="px-4 pt-4 pb-3">
         {batches.length ? (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <label htmlFor={selectId} className="text-xs text-ink-muted">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+            <label htmlFor={selectId} className="text-xs text-ink-muted sm:shrink-0">
               Ürün / varyant
             </label>
             <select
               id={selectId}
               value={selected?.id ?? ""}
               onChange={(e) => setVariantId(e.target.value)}
-              className="input input-sm w-auto max-w-full min-w-0 flex-1 sm:max-w-[26rem]"
+              className="input input-sm w-full min-w-0 sm:w-auto sm:max-w-[26rem] sm:flex-1"
             >
               {groups.map(([product, vs]) => (
                 <optgroup key={product} label={product}>
@@ -118,33 +162,34 @@ export function BatchCostChart({ batches }: { batches: CostBatch[] }) {
           </div>
         ) : null}
         <ChartFrame
-          height={240}
-          label={`${selected ? `${selected.product} ${selected.variant}` : ""} parti birim maliyeti (${currency === "USD" ? "USD" : "TL"}), zamana göre`}
+          height={250}
+          label={`${selected ? `${selected.product} ${selected.variant}` : ""} parti birim maliyeti (${currency === "USD" ? "USD" : "TL"}), tamamlanma sırasına göre`}
           empty={data.length === 0}
           emptyText="Henüz tamamlanmış üretim partisi yok. Açılış stoğu partileri bu grafiğe dahil edilmez."
         >
           <LineChart data={data} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
             <CartesianGrid {...GRID_PROPS} />
             <XAxis
-              type="number"
-              dataKey="t"
-              scale="time"
-              domain={[tMin - pad, tMax + pad]}
-              tickFormatter={(t: number) => SHORT_DATE.format(new Date(t))}
-              tick={AXIS_TICK}
+              type="category"
+              dataKey="batch_no"
+              tick={(p: { x?: number | string; y?: number | string; payload?: { value?: unknown } }) => <BatchTick {...p} dates={dates} />}
               tickLine={false}
               axisLine={{ stroke: CHART.grid }}
-              minTickGap={24}
-              tickCount={6}
+              interval="preserveStartEnd"
+              minTickGap={16}
+              height={36}
+              padding={{ left: 24, right: 24 }}
             />
             <YAxis
               dataKey="cost"
-              tickFormatter={(v: number) => fmtUnitMoney(v, currency)}
+              tickFormatter={(v: number) => fmtMoney(v, currency, tickDigits)}
               tick={AXIS_TICK}
               tickLine={false}
               axisLine={false}
               width={72}
-              domain={[(dataMin: number) => Math.max(0, dataMin * 0.9), (dataMax: number) => dataMax * 1.1]}
+              domain={axis?.domain ?? [0, "auto"]}
+              ticks={axis?.ticks}
+              interval={0}
             />
             <Tooltip
               cursor={{ stroke: CHART.axis, strokeDasharray: "3 3" }}
@@ -185,8 +230,8 @@ export function BatchCostChart({ batches }: { batches: CostBatch[] }) {
               dataKey="cost"
               stroke={CHART.brand}
               strokeWidth={2}
-              dot={{ r: 4, fill: CHART.brand, stroke: "#fff", strokeWidth: 2 }}
-              activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }}
+              dot={{ r: 4, fill: CHART.brand, strokeWidth: 2, className: "stroke-white" }}
+              activeDot={{ r: 6, strokeWidth: 2, className: "stroke-white" }}
               isAnimationActive={false}
             />
           </LineChart>

@@ -5,6 +5,7 @@ import { toUserMessage } from "@/lib/errors";
 import { fmtInt, fmtNum, fmtQty, fmtUnitMoney } from "@/lib/format";
 import { load } from "@/lib/query";
 import type { BomItem, Product, Simulation, VariantView } from "@/lib/types";
+import { materialUnitCost } from "../_components/bits";
 
 /** Ürünün tüm varyantlarının reçete özeti; düzenleme varyant sayfasında yapılır. */
 export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthContext; product: Product; variants: VariantView[]; isAdmin: boolean }) {
@@ -71,13 +72,15 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
                   </EmptyState>
                 ) : (
                   <>
-                    <TableWrap className="relative">
+                    <TableWrap className="relative hidden sm:block">
                       <table className="table-base">
                         <thead>
                           <tr>
                             <th>Malzeme</th>
                             <th className="num">1 adet için</th>
-                            <th className="num">Birim maliyet (USD)</th>
+                            <th className="num" title="Malzemenin güncel ortalama maliyeti, gösterim birimi başına">
+                              Birim maliyet (USD)
+                            </th>
                             <th className="num">Satır maliyeti (USD)</th>
                             <th className="num">Satır maliyeti (TL)</th>
                           </tr>
@@ -95,7 +98,7 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
                                   {entry ? `${fmtNum(entry.entry_qty, 4)} ${entry.entry_unit}` : fmtQty(l.qty_per_unit, l.display_factor, l.display_unit, 4)}
                                 </td>
                                 <td className="num">
-                                  {l.unit_cost_usd === null ? "—" : `${fmtUnitMoney(l.unit_cost_usd, "USD")} / ${l.base_unit}`}
+                                  {materialUnitCost(l)}
                                   {l.cost_basis === "last_purchase" ? <div className="text-xs text-ink-muted">son alış (stok yok)</div> : null}
                                 </td>
                                 <td className="num">{fmtUnitMoney(l.line_cost_usd, "USD")}</td>
@@ -113,6 +116,36 @@ export async function BomTab({ ctx, product, variants, isAdmin }: { ctx: AuthCon
                         </tfoot>
                       </table>
                     </TableWrap>
+                    {/* Mobil: kompakt liste; toplam tahmini maliyet ekranda kalır (yatay kaydırma gerekmez). */}
+                    <ul className="divide-y divide-line sm:hidden">
+                      {sim.lines.map((l) => {
+                        const entry = entryByKey.get(`${v.id}:${l.material_id}`);
+                        return (
+                          <li key={l.material_id} className="flex items-start justify-between gap-3 px-4 py-2.5 text-[13px]">
+                            <div className="min-w-0">
+                              <div>
+                                <span className="font-medium text-ink">{l.name}</span> <span className="code text-ink-muted">{l.code}</span>
+                              </div>
+                              <div className="text-xs text-ink-muted tabular-nums">
+                                {entry ? `${fmtNum(entry.entry_qty, 4)} ${entry.entry_unit}` : fmtQty(l.qty_per_unit, l.display_factor, l.display_unit, 4)} ·{" "}
+                                {materialUnitCost(l)}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right tabular-nums">
+                              <div className="font-medium text-ink">{fmtUnitMoney(l.line_cost_usd, "USD")}</div>
+                              <div className="text-xs text-ink-muted">{fmtUnitMoney(l.line_cost_try, "TRY")}</div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                      <li className="flex items-baseline justify-between gap-3 bg-canvas/60 px-4 py-2.5 text-[13px] font-semibold text-ink">
+                        <span>Tahmini reçete maliyeti</span>
+                        <span className="text-right tabular-nums">
+                          {fmtUnitMoney(sim.unit_cost_usd, "USD")}
+                          <span className="block text-xs font-medium text-ink-muted">{fmtUnitMoney(sim.unit_cost_try, "TRY")}</span>
+                        </span>
+                      </li>
+                    </ul>
                     {!sim.cost_complete ? (
                       <div className="border-t border-line p-3">
                         <Alert tone="warning">Bazı malzemelerin henüz alış kaydı olmadığı için maliyet eksik hesaplandı.</Alert>

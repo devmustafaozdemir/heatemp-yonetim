@@ -8,18 +8,13 @@ import { first, type SearchParams } from "@/lib/list-params";
 import { buckets } from "@/lib/period";
 import { load } from "@/lib/query";
 import type { HeatempShelfRow } from "@/lib/types";
+import { AgingTable } from "./_components/AgingTable";
 import { DeliveryDrawer, DeliveryProvider } from "./_components/DeliveryDrawer";
 import { LocationBanner } from "./_components/LocationBanner";
-import { ShelfDonut, ShelfMovementChart } from "./_components/ShelfCharts";
+import { SplitBar } from "./_components/Bars";
+import { ShelfMovementChart } from "./_components/ShelfCharts";
 import { ShelfTable } from "./_components/ShelfTable";
-import {
-  daysSince,
-  groupLayers,
-  last12MonthsFrom,
-  toMovementPoints,
-  type DeliverOption,
-  type MovementRow,
-} from "./_components/types";
+import { daysSince, groupLayers, last12MonthsFrom, toMovementPoints, type DeliverOption, type MovementRow } from "./_components/types";
 import { OpeningStockForm } from "./OpeningStockForm";
 
 export const metadata: Metadata = { title: "Heatemp rafı" };
@@ -56,7 +51,14 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
     ),
     load<MovementRow[]>(ctx.supabase.rpc("shelf_monthly_movements", { p_location: "heatemp", p_from: from, p_to: today })),
     isAdmin
-      ? load(ctx.supabase.from("v_variants").select("id, display_name").eq("is_active", true).order("display_name").returns<{ id: string; display_name: string }[]>())
+      ? load(
+          ctx.supabase
+            .from("v_variants")
+            .select("id, display_name")
+            .eq("is_active", true)
+            .order("display_name")
+            .returns<{ id: string; display_name: string }[]>(),
+        )
       : Promise.resolve({ data: [] as { id: string; display_name: string }[], error: null, count: null }),
   ]);
 
@@ -116,7 +118,11 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
   const totalTry = groups.reduce((s, g) => s + g.value_try, 0);
   const totalUsd = groups.reduce((s, g) => s + g.value_usd, 0);
   const layers = groups.flatMap((g) => g.layers.map((l) => ({ ...l, name: g.display_name })));
-  const oldest = layers.reduce<(typeof layers)[number] | null>((o, l) => (!o || l.date < o.date ? l : o), null);
+  // En eski rafa giriş tarihi; aynı gün giren tüm partiler birlikte sayılır (ör. açılış sayımı).
+  const oldestDate = layers.reduce<string | null>((m, l) => (!m || l.date < m ? l.date : m), null);
+  const oldestLayers = oldestDate ? layers.filter((l) => l.date === oldestDate) : [];
+  const oldestQty = oldestLayers.reduce((s, l) => s + l.remaining, 0);
+  const oldestVariants = new Set(oldestLayers.map((l) => l.name)).size;
   const openingLayers = layers.filter((l) => l.opening);
   const prodLayers = layers.filter((l) => !l.opening);
   const sum = (ls: typeof layers, k: "remaining" | "value_try") => ls.reduce((s, l) => s + l[k], 0);
@@ -189,7 +195,7 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
             />
             <StatCard
               label="Maliyet değeri"
-              scope="Güncel stok"
+              scope="Güncel"
               value={fmtMoney(totalTry, "TRY")}
               icon={Wallet}
               tone="blue"
@@ -203,26 +209,32 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
               icon={Layers}
               tone="violet"
               description={
-                openingLayers.length > 0
-                  ? `Açılış stoğu: ${fmtInt(sum(openingLayers, "remaining"))} adet · ${fmtMoney(sum(openingLayers, "value_try"), "TRY")}`
-                  : "Açılış stoğu yok; tümü üretim partisi"
+                openings.error
+                  ? "Açılış stoğu ayrımı yüklenemedi"
+                  : openingLayers.length > 0
+                    ? `Açılış stoğu: ${fmtInt(sum(openingLayers, "remaining"))} adet · ${fmtMoney(sum(openingLayers, "value_try"), "TRY")}`
+                    : "Açılış stoğu yok; tümü üretim partisi"
               }
             />
             <StatCard
               label="En eski parti"
               scope="FIFO sırası"
-              value={oldest ? fmtDate(oldest.date) : "—"}
+              value={oldestDate ? fmtDate(oldestDate) : "—"}
               icon={CalendarClock}
               tone="amber"
               description={
-                oldest
-                  ? `${oldest.batch_no} · ${fmtInt(daysSince(oldest.date, today))} gündür rafta · ${fmtInt(oldest.remaining)} adet`
-                  : "Rafta parti yok"
+                !oldestDate
+                  ? "Rafta parti yok"
+                  : oldestLayers.length === 1
+                    ? `${oldestLayers[0].batch_no} · ${fmtInt(daysSince(oldestDate, today))} gündür rafta · ${fmtInt(oldestQty)} adet`
+                    : `${fmtInt(oldestLayers.length)} parti (${fmtInt(oldestVariants)} varyant) · ${fmtInt(oldestQty)} adet · ${fmtInt(
+                        daysSince(oldestDate, today),
+                      )} gündür rafta`
               }
             />
           </div>
 
-          <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+          <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
             <Card title="Raf hareketleri" description="Son 12 ay · rafa giriş ve Mekonsis'e teslimat" padded={false}>
               {moves.error ? (
                 <ErrorState message={moves.error} compact />
@@ -247,26 +259,40 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
                 </>
               )}
             </Card>
-            <Card title="Raf değerinin kaynağı" description="Güncel stok · parti maliyeti (TL)">
-              <ShelfDonut
-                unit="try"
-                centerLabel="Raf değeri"
-                label="Heatemp rafı maliyet değerinin üretim partileri ve açılış stoğuna dağılımı"
-                data={[
-                  {
-                    name: "Üretim partileri",
-                    value: sum(prodLayers, "value_try"),
-                    color: "teal",
-                    hint: `${fmtInt(sum(prodLayers, "remaining"))} adet · ${fmtInt(prodLayers.length)} parti`,
-                  },
-                  {
-                    name: "Açılış stoğu",
-                    value: sum(openingLayers, "value_try"),
-                    color: "violet",
-                    hint: `${fmtInt(sum(openingLayers, "remaining"))} adet · ${fmtInt(openingLayers.length)} parti · sistem öncesi`,
-                  },
-                ]}
-              />
+            <Card title="Raf değerinin kaynağı ve bekleme süresi" description="Güncel stok · parti maliyeti (TL)">
+              {openings.error ? (
+                // Hata ≠ boş: açılış partileri bilinmeden kaynak dağılımı (üretim / açılış) gösterilmez
+                <Alert tone="error" title="Kaynak dağılımı yüklenemedi">
+                  Açılış stoğu partileri okunamadığı için üretim partisi ve açılış stoğu ayrılamıyor ({openings.error}). Toplam
+                  raf değeri: {fmtMoney(totalTry, "TRY")}.
+                </Alert>
+              ) : (
+                <SplitBar
+                  unit="try"
+                  label="Heatemp rafı maliyet değerinin kaynağa göre dağılımı"
+                  items={[
+                    {
+                      name: "Üretim partileri",
+                      value: sum(prodLayers, "value_try"),
+                      color: "bg-chart-teal",
+                      hint: `${fmtInt(sum(prodLayers, "remaining"))} adet · ${fmtInt(prodLayers.length)} parti`,
+                    },
+                    {
+                      name: "Açılış stoğu",
+                      value: sum(openingLayers, "value_try"),
+                      color: "bg-chart-violet",
+                      hint: `${fmtInt(sum(openingLayers, "remaining"))} adet · ${fmtInt(openingLayers.length)} parti · sistem öncesi, üretim sayılmaz`,
+                    },
+                  ]}
+                />
+              )}
+              <div className="mt-4 border-t border-line pt-3">
+                <AgingTable
+                  layers={layers}
+                  today={today}
+                  dateLabel="Rafta bekleme süresi · rafa giriş tarihinden bugüne (parti sayısı parantezde)"
+                />
+              </div>
             </Card>
           </div>
 
@@ -278,7 +304,7 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
           >
             {openings.error ? (
               <Alert tone="warning" className="m-4 mb-0">
-                Açılış stoğu etiketleri yüklenemedi ({openings.error}); partiler etiketsiz gösteriliyor.
+                Açılış stoğu etiketleri yüklenemedi ({openings.error}); partiler “Açılış stoğu” etiketi olmadan gösteriliyor.
               </Alert>
             ) : null}
             {groups.length === 0 ? (
