@@ -64,8 +64,16 @@ export function ListToolbar({
   const keep = new Set([...NON_FILTER_KEYS, ...preserveKeys]);
   const h = hash ? `#${hash}` : "";
 
+  // Kutudaki anlık arama metni: arama zamanlayıcısı beklerken başka bir filtre seçilirse metin kaybolmasın.
+  const qNow = useRef(values.q ?? "");
+
   function go(overrides: Record<string, string | null>, replace = false) {
-    const href = hrefWith(basePath, values, { ...overrides, sayfa: null }) + h;
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const withQ = "q" in overrides ? overrides : { q: qNow.current.trim() || null, ...overrides };
+    const href = hrefWith(basePath, values, { ...withQ, sayfa: null }) + h;
     startTransition(() => (replace ? router.replace(href, { scroll: !hash }) : router.push(href, { scroll: !hash })));
   }
 
@@ -77,8 +85,12 @@ export function ListToolbar({
   );
 
   function onSearch(v: string) {
+    qNow.current = v;
     if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => go({ q: v.trim() || null }, true), 350);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      go({ q: v.trim() || null }, true);
+    }, 350);
   }
 
   const active = Object.keys(values).some((k) => !keep.has(k));
@@ -175,6 +187,7 @@ export function ListToolbar({
             type="button"
             onClick={() => {
               if (timer.current) window.clearTimeout(timer.current);
+              qNow.current = "";
               setSearchKey((k) => k + 1);
               const kept = Object.fromEntries(Object.entries(values).filter(([k]) => preserveKeys.includes(k) || k === "adet"));
               startTransition(() => router.push(hrefWith(basePath, kept) + h, { scroll: !hash }));

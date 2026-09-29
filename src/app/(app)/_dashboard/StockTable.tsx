@@ -3,12 +3,11 @@ import Link from "next/link";
 import { CostChange } from "@/components/status";
 import { STOCK_STATUS, StockStatusBadge } from "@/components/StockStatus";
 import { Alert, Badge, Card, cx, EmptyState, ErrorState, TableWrap } from "@/components/ui";
-import { SortTh } from "@/components/ui/list";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { Pagination, SortTh } from "@/components/ui/list";
 import { fmtDate, fmtInt, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import type { ListParams } from "@/lib/list-params";
 import type { VariantOverview } from "@/lib/types";
-import { StockPagination } from "./StockPagination";
-import { StockTableToolbar } from "./StockTableToolbar";
 
 export interface OpeningInfo {
   variants: number;
@@ -40,7 +39,6 @@ const SORT_OPTIONS = [
 ];
 
 const SCOPE_OPTIONS = [
-  { value: "", label: "Stoğu veya geçmişi olanlar" },
   { value: "aktif", label: "Tüm aktif varyantlar" },
   { value: "tum", label: "Tüm varyantlar (pasif dahil)" },
 ];
@@ -70,7 +68,7 @@ export function StockTable({
 }) {
   const values = lp.values;
   const sum = (k: keyof VariantOverview) => rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
-  const th = { sort: lp.sort, dir: lp.dir, basePath: "/", values };
+  const th = { sort: lp.sort, dir: lp.dir, basePath: "/", values, hash: "urun-durumu" };
   const filtered = Boolean(values.q || values.durum || values.kapsam);
 
   return (
@@ -112,13 +110,19 @@ export function StockTable({
         <ErrorState message={error} />
       ) : (
         <div className="@container">
-          <StockTableToolbar
+          <ListToolbar
+            basePath="/"
             values={values}
-            total={rows.length}
-            statusOptions={STATUS_OPTIONS}
-            scopeOptions={SCOPE_OPTIONS}
+            search={{ placeholder: "Ürün, varyant veya kod ara" }}
+            filters={[
+              { key: "durum", label: "Stok durumu", allLabel: "Durum: tümü", options: STATUS_OPTIONS },
+              { key: "kapsam", label: "Kapsam", allLabel: "Stoğu veya geçmişi olanlar", options: SCOPE_OPTIONS },
+            ]}
             sortOptions={SORT_OPTIONS}
-            sortValue={`${lp.sort ?? "product_name"}:${lp.dir}`}
+            total={rows.length}
+            noun="varyant"
+            preserveKeys={["donem", "gorunum", "bas", "bit"]}
+            hash="urun-durumu"
           />
           {rows.length === 0 ? (
             <EmptyState title={filtered ? "Filtreye uyan varyant yok" : "Henüz stoğu veya geçmişi olan varyant yok"}>
@@ -309,7 +313,7 @@ export function StockTable({
             </>
           )}
           {rows.length > 0 ? (
-            <StockPagination values={values} page={lp.page} pageSize={lp.pageSize} total={rows.length} noun="varyant" hash="urun-durumu" />
+            <Pagination basePath="/" values={values} page={lp.page} pageSize={lp.pageSize} total={rows.length} noun="varyant" hash="urun-durumu" />
           ) : null}
         </div>
       )}
