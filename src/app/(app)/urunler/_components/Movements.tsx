@@ -17,7 +17,7 @@ export const MOVEMENT: Record<MovementType, MovementMeta> = {
   production_in: { label: "Üretim girişi", tone: "green", icon: Factory, hint: "Tamamlanan üretim partisi Heatemp rafına girdi" },
   delivery_out: { label: "Teslimat çıkışı", tone: "sky", icon: Truck, hint: "Heatemp rafından Mekonsis'e teslim edildi (satış değildir)" },
   delivery_in: { label: "Teslimat girişi", tone: "sky", icon: ArrowLeftRight, hint: "Mekonsis rafına teslimatla girdi (satış değildir)" },
-  sale_out: { label: "Satış çıkışı", tone: "blue", icon: Receipt, hint: "Mekonsis satışıyla raftan çıktı (FIFO)" },
+  sale_out: { label: "Satış çıkışı", tone: "blue", icon: Receipt, hint: "Mekonsis satışıyla raftan çıktı" },
   sale_return: { label: "Satış iptali iadesi", tone: "amber", icon: Undo2, hint: "İptal edilen satışın adedi Mekonsis rafına döndü" },
   delivery_reversal_out: { label: "Teslimat iptali çıkışı", tone: "gray", icon: Undo2, hint: "İptal edilen teslimat Mekonsis rafından düşüldü" },
   delivery_reversal_in: { label: "Teslimat iptali girişi", tone: "gray", icon: Undo2, hint: "İptal edilen teslimat Heatemp rafına döndü" },
@@ -107,7 +107,7 @@ export async function StockMovementsCard({
   return (
     <Card
       title="Stok hareketleri"
-      description="Heatemp ve Mekonsis raflarındaki tüm giriş/çıkışlar; birim maliyet, hareketin ait olduğu partinin FIFO maliyetidir."
+      description="Heatemp ve Mekonsis raflarındaki tüm giriş/çıkışlar; birim maliyet, hareketin ait olduğu partinin maliyetidir."
       padded={false}
     >
       <TabToolbar
@@ -152,7 +152,7 @@ export async function StockMovementsCard({
                   <th>Raf</th>
                   {multi ? <th>Varyant</th> : null}
                   <th className="num">Birim maliyet</th>
-                  <th className="num" title="Miktar × hareketin FIFO parti birim maliyeti (TL). Satış tutarı değildir.">
+                  <th className="num" title="Miktar × hareketin parti birim maliyeti (TL). Satış tutarı değildir.">
                     Maliyet tutarı (TL)
                   </th>
                   <th>Belge</th>
@@ -218,7 +218,7 @@ export async function StockMovementsCard({
                     <div className={r.qty > 0 ? "text-[15px] font-semibold text-emerald-700 tabular-nums" : "text-[15px] font-semibold text-red-600 tabular-nums"}>
                       {signedQty(r.qty)}
                     </div>
-                    <div className="text-xs text-ink-muted tabular-nums" title="Miktar × FIFO parti birim maliyeti; satış tutarı değildir">
+                    <div className="text-xs text-ink-muted tabular-nums" title="Miktar × parti birim maliyeti; satış tutarı değildir">
                       maliyet {fmtMoney(Number(r.qty) * Number(r.unit_cost_try), "TRY")}
                     </div>
                   </div>

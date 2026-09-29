@@ -56,7 +56,7 @@ export function QuoteLinesChart({ lines, actual }: { lines: QuoteLinePoint[]; ac
         </li>
         <li className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm" style={{ background: CHART.amber }} aria-hidden />
-          {word} maliyet (TL, FIFO)
+          {word} maliyet (TL)
         </li>
       </ul>
       <ChartFrame

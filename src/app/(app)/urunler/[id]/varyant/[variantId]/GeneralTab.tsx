@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { Alert, Badge, Card, DefinitionList, ErrorState } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
-import { fmtInt, fmtMinutes, fmtMoney, fmtUnitMoney } from "@/lib/format";
+import { fmtInt, fmtMinutes100, fmtMoney, fmtUnitMoney } from "@/lib/format";
 import { load } from "@/lib/query";
 import type { VariantView } from "@/lib/types";
 import { SourceTag, priceMinusEstimate } from "../../../_components/bits";
@@ -65,9 +65,9 @@ export async function VariantGeneralTab({ ctx, data, isAdmin }: { ctx: AuthConte
                 </span>,
               ],
               [
-                "Birim üretim süresi",
+                "Üretim süresi (100 adet)",
                 <span key="m" className="inline-flex items-center gap-1.5">
-                  {fmtMinutes(e.unit_production_minutes)} <SourceTag overridden={e.minutes_overridden} />
+                  {fmtMinutes100(e.unit_production_minutes)} <SourceTag overridden={e.minutes_overridden} />
                 </span>,
               ],
               [
@@ -99,7 +99,7 @@ export async function VariantGeneralTab({ ctx, data, isAdmin }: { ctx: AuthConte
                 items={[
                   ["Reçete kalemi", `${fmtInt(sim.lines.length)} malzeme`],
                   ["Tahmini reçete maliyeti", `${fmtUnitMoney(sim.unit_cost_usd, "USD")} · ${fmtUnitMoney(sim.unit_cost_try, "TRY")}`],
-                  ["Fiyat − tahmini maliyet", margin ? fmtUnitMoney(margin.diff, e.currency) : "—"],
+                  ["Tahmini kâr", margin ? fmtUnitMoney(margin.diff, e.currency) : "—"],
                   ["Mevcut hammaddeyle üretilebilir", `${fmtInt(sim.max_producible)} adet`],
                 ]}
               />

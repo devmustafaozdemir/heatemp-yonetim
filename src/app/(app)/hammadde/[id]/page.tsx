@@ -29,8 +29,9 @@ import { isUuid } from "@/lib/parse";
 import { addDays } from "@/lib/period";
 import { load, must } from "@/lib/query";
 import type { MaterialMovement, SupplierOption, Unit, UnitKind } from "@/lib/types";
-import { updateMaterial } from "../actions";
-import { KindBadge, MOVEMENT_META, MOVEMENT_ORDER, MaterialStateBadge, MovementBadge, movementTypeFromKey } from "../_components/bits";
+import { DeleteButton } from "@/components/DeleteButton";
+import { deleteMaterial, updateMaterial } from "../actions";
+import { DELETE_MATERIAL_TEXT, KindBadge, MOVEMENT_META, MOVEMENT_ORDER, MaterialStateBadge, MovementBadge, movementTypeFromKey } from "../_components/bits";
 import { CorrectPurchase, DeleteMovement, PurchaseSupplier } from "../_components/CorrectPurchase";
 import { lastPageOf, loadPage } from "../_components/paging";
 import { StockFlowChart, type StockFlowPoint } from "../_components/StockFlowChart";
@@ -413,6 +414,9 @@ export default async function MaterialPage({
                   </div>
                 </ActionForm>
               </Drawer>
+              <DeleteButton action={deleteMaterial} fields={{ id: material.id }} title={`${material.name} silinsin mi?`} variant="secondary">
+                {DELETE_MATERIAL_TEXT}
+              </DeleteButton>
             </>
           ) : null
         }

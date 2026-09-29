@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, Calculator, Layers, Plus, Store, Tag, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Calculator, Plus, Split, Store, Tag, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ActionForm, FormField, SubmitButton } from "@/components/forms";
@@ -13,6 +13,7 @@ import { parseDecimal, parseInteger } from "@/lib/parse";
 import type { Currency } from "@/lib/types";
 import { fmtRatio, fmtRatioSigned } from "./_components/fmt";
 import { recordSale } from "./actions";
+import { SHARE_LABEL, splitShares } from "@/lib/shares";
 
 export interface SaleVariantOption {
   variant_id: string;
@@ -258,10 +259,6 @@ export function SaleForm({
   const totalQty = lines.reduce((s, l) => s + (l.v && l.qty ? l.qty : 0), 0);
   const totalTry = toTry(total);
   const anyOver = lines.some((l) => l.over);
-  const costKnown = !layersError && filled.length > 0 && filled.every((l) => l.preview && !l.over);
-  const estCost = costKnown ? filled.reduce((s, l) => s + (l.preview?.cost ?? 0), 0) : null;
-  const estProfit = estCost !== null && totalTry !== null ? totalTry - estCost : null;
-  const estMargin = estProfit !== null && totalTry ? (estProfit / totalTry) * 100 : null;
   const listLines = filled.filter((l) => l.list !== null);
   const listTotal = listLines.reduce((s, l) => s + (l.list ?? 0) * (l.qty ?? 0), 0);
   const listActual = listLines.reduce((s, l) => s + (l.total ?? 0), 0);
@@ -285,7 +282,7 @@ export function SaleForm({
     attempt?.message && (Object.keys(fe).length > 0 ? anyVisibleError : !attempt.edited) ? attempt.message : null;
 
   return (
-    <ActionForm action={submit} confirmMessage={complete ? "Satış kaydedilsin mi? Ürünler Mekonsis rafından FIFO ile düşülecek." : undefined}>
+    <ActionForm action={submit} confirmMessage={complete ? "Satış kaydedilsin mi? Ürünler Mekonsis rafından düşülecek." : undefined}>
       <input
         type="hidden"
         name="items"
@@ -527,18 +524,14 @@ export function SaleForm({
                           Tanımlı liste fiyatı yok
                         </span>
                       )}
-                      {l.preview && l.preview.allocated > 0 && !l.over ? (
+                      {l.total !== null && l.total > 0 ? (
                         <span className="inline-flex flex-wrap items-center gap-1.5">
-                          <Layers className="size-3.5 text-ink-muted" aria-hidden />
-                          Tahmini FIFO maliyeti: <strong className="font-semibold text-ink tabular-nums">{fmtMoney(l.preview.cost, "TRY")}</strong>
-                          <span className="text-ink-muted">
-                            ({l.preview.taken.map((t) => `${t.batch_no}${t.kind === "opening" ? " (Açılış stoğu)" : ""} × ${fmtInt(t.qty)}`).join(", ")})
-                          </span>
-                          {l.revenueTry !== null ? (
-                            <span className={cx("font-medium tabular-nums", l.revenueTry - l.preview.cost < 0 ? "text-chart-red" : "text-ink")}>
-                              · kâr {fmtMoney(l.revenueTry - l.preview.cost, "TRY")}
-                            </span>
-                          ) : null}
+                          <Split className="size-3.5 text-ink-muted" aria-hidden />
+                          Heatemp {SHARE_LABEL.heatemp}:{" "}
+                          <strong className="font-semibold text-ink tabular-nums">{fmtMoney(splitShares(l.total).heatemp, currency)}</strong>
+                          <span className="text-ink-muted">·</span>
+                          Mekonsis {SHARE_LABEL.mekonsis}:{" "}
+                          <strong className="font-semibold text-ink tabular-nums">{fmtMoney(splitShares(l.total).mekonsis, currency)}</strong>
                         </span>
                       ) : null}
                     </div>
@@ -626,44 +619,18 @@ export function SaleForm({
                 <dt className="text-ink-muted">Ciro (TL, önizleme)</dt>
                 <dd className="font-medium text-ink tabular-nums">{totalTry !== null ? fmtMoney(totalTry, "TRY") : "—"}</dd>
               </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-ink-muted">Tahmini FIFO maliyeti</dt>
-                <dd className="font-medium text-ink tabular-nums">{estCost !== null ? `−${fmtMoney(estCost, "TRY")}` : "—"}</dd>
-              </div>
               <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2">
-                <dt className="font-semibold text-ink">Tahmini brüt kâr</dt>
-                <dd
-                  className={cx(
-                    "text-[15px] font-semibold tabular-nums",
-                    estProfit === null ? "text-ink-muted" : estProfit < 0 ? "text-chart-red" : "text-ink",
-                  )}
-                >
-                  {estProfit !== null ? fmtMoney(estProfit, "TRY") : "—"}
-                </dd>
+                <dt className="font-semibold text-ink">Heatemp payı ({SHARE_LABEL.heatemp})</dt>
+                <dd className="text-[15px] font-semibold text-ink tabular-nums">{fmtMoney(splitShares(total).heatemp, currency)}</dd>
               </div>
-              <div className="flex items-baseline justify-between gap-3 text-xs">
-                <dt className="text-ink-muted">Tahmini marj</dt>
-                <dd className="font-medium text-ink-soft tabular-nums">{fmtRatio(estMargin)}</dd>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="font-semibold text-ink">Mekonsis payı ({SHARE_LABEL.mekonsis})</dt>
+                <dd className="text-[15px] font-semibold text-ink tabular-nums">{fmtMoney(splitShares(total).mekonsis, currency)}</dd>
               </div>
             </dl>
-            {estCost !== null && totalTry ? (
-              <div className="mb-3" aria-hidden>
-                <div className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full bg-canvas">
-                  <div
-                    className={cx("h-full", estProfit !== null && estProfit < 0 ? "bg-chart-red" : "bg-chart-violet")}
-                    style={{ width: `${Math.min(100, (estCost / totalTry) * 100)}%` }}
-                  />
-                  {estProfit !== null && estProfit > 0 ? (
-                    <div className="h-full bg-chart-teal" style={{ width: `${(estProfit / totalTry) * 100}%` }} />
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
             <p className="mb-3 text-xs text-ink-muted">
-              {layersError
-                ? `Tahmini maliyet gösterilemiyor (${layersError}). `
-                : "Tahmin, satış tarihine kadar rafa girmiş partilerin FIFO sırasına göredir. "}
-              Kesin ciro, FIFO maliyeti ve brüt kâr kayıt sırasında veritabanında hesaplanır.
+              Satış tutarı Heatemp {SHARE_LABEL.heatemp} · Mekonsis {SHARE_LABEL.mekonsis} olarak paylaşılır (%66 + %33, kalan %1 eşit
+              dağıtılır). Kesin ciro kayıt sırasında satış günü kuruyla hesaplanır.
             </p>
             {anyOver ? (
               <Alert tone="error" className="mb-3">

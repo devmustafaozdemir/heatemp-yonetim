@@ -218,7 +218,7 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
             />
             <StatCard
               label="En eski parti"
-              scope="FIFO sırası"
+              scope="En eski önce"
               value={oldestDate ? fmtDate(oldestDate) : "—"}
               icon={CalendarClock}
               tone="amber"

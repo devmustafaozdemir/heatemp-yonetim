@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FormField } from "@/components/forms";
 import { FormSection } from "@/components/ui";
-import { fmtMinutes, fmtMoney } from "@/lib/format";
+import { fmtMinutes100, fmtMoney, minutesPer100 } from "@/lib/format";
 import type { Product, ProductVariant } from "@/lib/types";
 
 export type VariantDefaults = Pick<
@@ -17,7 +17,7 @@ export function VariantFields({ variant, defaults }: { variant?: ProductVariant;
   const priceHint = defaults
     ? `Boş = ürün fiyatı (${defaults.default_sale_price === null ? "tanımsız" : fmtMoney(defaults.default_sale_price, defaults.default_currency)})`
     : "Boş = ürün fiyatı";
-  const minutesHint = defaults ? `Boş = ürün süresi (${fmtMinutes(defaults.unit_production_minutes)})` : "Boş = ürün süresi";
+  const minutesHint = defaults ? `Boş = ürün süresi (${fmtMinutes100(defaults.unit_production_minutes)})` : "Boş = ürün süresi";
 
   return (
     <div className="grid gap-5">
@@ -43,8 +43,8 @@ export function VariantFields({ variant, defaults }: { variant?: ProductVariant;
               <option value="TRY">TRY</option>
             </select>
           </FormField>
-          <FormField name="unit_production_minutes" label="Birim üretim süresi (dk)" hint={minutesHint}>
-            <input className="input" name="unit_production_minutes" inputMode="decimal" defaultValue={variant?.unit_production_minutes ?? ""} />
+          <FormField name="unit_production_minutes" label="Üretim süresi (100 adet, dk)" hint={minutesHint}>
+            <input className="input" name="unit_production_minutes" inputMode="decimal" defaultValue={variant?.unit_production_minutes == null ? "" : minutesPer100(variant.unit_production_minutes)} />
           </FormField>
         </div>
       </FormSection>

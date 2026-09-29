@@ -436,6 +436,11 @@ describe("Kur kuralları", () => {
     expect(Number(suggested.rate)).toBe(35.25);
     expect(suggested.is_valid).toBe(true);
 
+    // Bugün elle girilen kur, geçerli otomatik kuru ezmez (genel kur hep otomatik)
+    await rpc(admin, "add_manual_fx_rate", { p_rate: 99, p_rate_date: today });
+    const [current] = await query(admin, "select * from public.fx_rate_for_date(null)");
+    expect(current.source).not.toBe("MANUAL");
+
     await expectError(rpc(admin, "add_manual_fx_rate", { p_rate: 0, p_rate_date: today }), /sıfırdan büyük/);
     await expectError(
       rpc(admin, "add_manual_fx_rate", { p_rate: 40, p_rate_date: await addDays(today, 1) }),
@@ -607,6 +612,26 @@ describe("Tutarlılık", () => {
     // Dashboard ve Kasa aynı kaynaktan: toplam ciro satış kayıtlarıyla eşleşir
     const [s] = await sql("select coalesce(sum(revenue_try), 0) as r from public.sales where status = 'completed'");
     expect(Number(k.revenue_try)).toBeCloseTo(Number(s.r), 4);
+  });
+});
+
+describe("Hammadde silme", () => {
+  it("kullanılmamış malzeme hareketleri ve reçetesiyle silinir; üretimde kullanılan silinmez", async () => {
+    const f = await setupProduct(admin);
+    // f.materials[0] reçetede; alış yapılmış ama üretim yok
+    await receive(f.admin, f.materials[0].id, 5, "kg", 10, "USD", f.fxId);
+    await rpc(f.admin, "delete_raw_material", { p_material_id: f.materials[0].id });
+    expect(await sql("select 1 from public.raw_materials where id = $1", [f.materials[0].id])).toHaveLength(0);
+    expect(await sql("select 1 from public.material_movements where material_id = $1", [f.materials[0].id])).toHaveLength(0);
+    expect(await sql("select 1 from public.bom_items where material_id = $1", [f.materials[0].id])).toHaveLength(0);
+
+    const g = await setupProduct(admin);
+    await receive(g.admin, g.materials[0].id, 30, "kg", 10, "USD", g.fxId);
+    await receive(g.admin, g.materials[1].id, 200, "adet", 80, "TRY", g.fxId);
+    await produce(g, 10);
+    await expectError(rpc(g.admin, "delete_raw_material", { p_material_id: g.materials[0].id }), /üretim partilerinde kullanıldı/);
+    const viewer = await createUser("viewer");
+    await expectError(rpc(viewer, "delete_raw_material", { p_material_id: g.materials[1].id }), /yönetici yetkisi/);
   });
 });
 

@@ -7,7 +7,7 @@ import { Badge, Card, EmptyState, ErrorState, PageHeader, ProgressBar, TableWrap
 import { Drawer } from "@/components/ui/dialog";
 import { Pagination, SortTh } from "@/components/ui/list";
 import { requireMember } from "@/lib/auth";
-import { fmtInt, fmtMinutes, fmtMoney } from "@/lib/format";
+import { fmtInt, fmtMinutes100, fmtMoney } from "@/lib/format";
 import { parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
 import { load } from "@/lib/query";
 import { ProductThumb, StatTile, StatusMeter, fmtCostRange } from "./_components/bits";
@@ -16,8 +16,9 @@ import { StockByProductChart, type StockBarRow } from "./_components/StockByProd
 import { TabToolbar } from "./_components/TabToolbar";
 import { redirectIfPageOutOfRange } from "./_components/paging";
 import type { ProductListRow } from "./_components/types";
-import { createProduct } from "./actions";
+import { createProduct, deleteProduct } from "./actions";
 import { ProductFields } from "./ProductFields";
+import { DeleteButton } from "@/components/DeleteButton";
 
 export const metadata: Metadata = { title: "Ürünler ve BOM" };
 
@@ -397,7 +398,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                             <div className="text-[11px] leading-4 whitespace-normal text-ink-muted">{fmtInt(p.price_override_count)} varyantta özel fiyat</div>
                           ) : null}
                           <div className="mt-0.5 text-xs whitespace-nowrap text-ink-soft" title="1 adet için birim üretim süresi">
-                            {fmtMinutes(p.unit_production_minutes)} / adet
+                            {fmtMinutes100(p.unit_production_minutes)}
                           </div>
                           {p.minutes_override_count > 0 ? (
                             <div className="text-[11px] leading-4 whitespace-normal text-ink-muted">{fmtInt(p.minutes_override_count)} varyantta özel süre</div>
@@ -431,7 +432,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                           )}
                         </td>
                         <td className="w-px text-right whitespace-nowrap">
-                          <RowActions id={p.id} name={p.name} />
+                          <RowActions id={p.id} name={p.name} isAdmin={isAdmin} />
                         </td>
                       </tr>
                     ))}
@@ -471,7 +472,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                         </div>
                       </div>
                       <div className="-mt-1 -mr-2 shrink-0">
-                        <RowActions id={p.id} name={p.name} />
+                        <RowActions id={p.id} name={p.name} isAdmin={isAdmin} />
                       </div>
                     </div>
                     <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2.5 text-[13px]">
@@ -488,7 +489,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                       </div>
                       <div className="min-w-0">
                         <dt className="text-xs text-ink-muted">Birim süre</dt>
-                        <dd className="tabular-nums">{fmtMinutes(p.unit_production_minutes)}</dd>
+                        <dd className="tabular-nums">{fmtMinutes100(p.unit_production_minutes)}</dd>
                       </div>
                       <div className="min-w-0">
                         <dt className="text-xs text-ink-muted">Varyant</dt>
@@ -516,7 +517,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 }
 
 /** Satır işlemleri: ilgili sekmelere kısayollar. */
-function RowActions({ id, name }: { id: string; name: string }) {
+function RowActions({ id, name, isAdmin }: { id: string; name: string; isAdmin: boolean }) {
   const icon = "size-8 px-0";
   return (
     <div className="inline-flex items-center gap-0.5">
@@ -526,6 +527,12 @@ function RowActions({ id, name }: { id: string; name: string }) {
       <Link href={`/urunler/${id}?sekme=stok`} className={buttonClass("ghost", "sm") + ` ${icon}`} title="Stok ve hareketler" aria-label={`${name}: stok ve hareketler`}>
         <Warehouse aria-hidden />
       </Link>
+      {isAdmin ? (
+        <DeleteButton action={deleteProduct} fields={{ id }} title={`${name} silinsin mi?`} label={`${name}: sil`} compact>
+          Ürün, tüm varyantları ve reçeteleriyle kalıcı olarak silinir. Üretim, stok, teslimat, satış veya teklif kaydı olan ürün silinemez;
+          bunun yerine pasif yapın.
+        </DeleteButton>
+      ) : null}
     </div>
   );
 }

@@ -299,7 +299,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             undefined,
             cur.profit,
             prev.profit,
-            `Marj ${fmtPct(margin)} · FIFO parti maliyetiyle`,
+            `Marj ${fmtPct(margin)}`,
             kasaHref,
           )}
           {salesStat(
@@ -438,7 +438,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Card
             title="Raf değeri dağılımı"
             icon={PieChart}
-            description="Maliyet değeri (FIFO parti birim maliyetiyle); açılış stoğundan kalan adetler dahildir."
+            description="Maliyet değeri (parti birim maliyetiyle); açılış stoğundan kalan adetler dahildir."
             className="h-full"
             footer={
               <span>

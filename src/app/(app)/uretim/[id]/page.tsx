@@ -48,7 +48,7 @@ import {
 } from "@/components/ui";
 import { Modal } from "@/components/ui/dialog";
 import { getAuthContext, requireMember } from "@/lib/auth";
-import { fmtDate, fmtDateTime, fmtInt, fmtMinutes, fmtMoney, fmtNum, fmtPct, fmtQty, fmtRate, pctChange } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtInt, fmtMinutes, fmtMinutes100, fmtMoney, fmtNum, fmtPct, fmtQty, fmtRate, pctChange } from "@/lib/format";
 import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { BatchConsumption, BatchView } from "@/lib/types";
@@ -405,7 +405,7 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
           {/* Raf ve satış durumu */}
           <Card
             title="Raf ve teslimat durumu"
-            description="Bu partinin mamulleri nerede · FIFO katmanlarından"
+            description="Bu partinin mamulleri nerede"
             icon={Warehouse}
             padded={false}
           >
@@ -498,8 +498,8 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
                 columns={1}
                 items={[
                   [
-                    "Birim üretim süresi",
-                    hasEstimate ? fmtMinutes(batch.unit_production_minutes) : <span className="text-ink-muted">Tanımlı değil</span>,
+                    "Üretim süresi (100 adet)",
+                    hasEstimate ? fmtMinutes100(batch.unit_production_minutes) : <span className="text-ink-muted">Tanımlı değil</span>,
                   ],
                   ["Tahmini süre", hasEstimate ? fmtMinutes(estimated) : <span className="text-ink-muted">Tanımlı değil</span>],
                   ...(completed

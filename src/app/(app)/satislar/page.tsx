@@ -16,6 +16,7 @@ import { CustomRangeForm } from "./_components/CustomRangeForm";
 import { fmtRatio, marginPct } from "./_components/fmt";
 import { chartGranularity, monthlyQuery, PERIOD_PRESETS, resolveListPeriod } from "./_components/period";
 import { SalesBreakdown, SalesTrendChart, type BreakdownRow, type TrendPoint } from "./_components/SalesCharts";
+import { SHARE_LABEL, splitShares } from "@/lib/shares";
 
 export const metadata: Metadata = { title: "Satışlar" };
 
@@ -350,7 +351,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Satışlar"
-        description="Mekonsis'in gerçekleştirdiği satışlar. Ciro ve brüt kâr yalnız gerçekleşen satışlardan oluşur; maliyet Mekonsis rafındaki partilerden FIFO ile tahsis edilir. Teslimatlar satış değildir."
+        description="Mekonsis'in gerçekleştirdiği satışlar. Ciro ve brüt kâr yalnız gerçekleşen satışlardan oluşur. Satış tutarı Heatemp %66,5 · Mekonsis %33,5 paylaşılır. Teslimatlar satış değildir."
         actions={
           ctx.role === "admin" ? (
             <ButtonLink href="/satislar/yeni">
@@ -424,12 +425,11 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
             />
             <StatCard
               label="Brüt kâr"
-              scope="FIFO maliyetiyle"
               value={fmtMoney(t.gross_profit_try, "TRY")}
               icon={TrendingUp}
               tone={t.gross_profit_try < 0 ? "red" : "teal"}
               delta={delta(t.gross_profit_try, pt?.gross_profit_try)}
-              description={`Marj ${fmtRatio(margin)} · FIFO maliyeti ${fmtMoney(t.cogs_try, "TRY")}`}
+              description={`Marj ${fmtRatio(margin)} · Heatemp ${SHARE_LABEL.heatemp} ${fmtMoney(splitShares(t.revenue_try).heatemp, "TRY")} · Mekonsis ${SHARE_LABEL.mekonsis} ${fmtMoney(splitShares(t.revenue_try).mekonsis, "TRY")}`}
             />
             <StatCard
               label="Satılan adet"
@@ -477,9 +477,12 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
                       hint: "TL / adet",
                     },
                     {
-                      label: "Ort. FIFO maliyeti",
-                      value: t.quantity > 0 ? fmtMoney(t.cogs_try / t.quantity, "TRY") : "—",
-                      hint: "TL / adet",
+                      label: `Heatemp payı (${SHARE_LABEL.heatemp})`,
+                      value: fmtMoney(splitShares(t.revenue_try).heatemp, "TRY"),
+                    },
+                    {
+                      label: `Mekonsis payı (${SHARE_LABEL.mekonsis})`,
+                      value: fmtMoney(splitShares(t.revenue_try).mekonsis, "TRY"),
                     },
                     { label: "Brüt marj", value: fmtRatio(margin) },
                   ]}
@@ -506,7 +509,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
             ? "İptal edilen satışlar ciro ve kâra dahil değildir; özet kartları ve grafikler yalnız gerçekleşen satışları gösterir."
             : lineLevel
               ? "Ürün/varyant filtresinde özet kartları yalnız ilgili kalemleri toplar; tablodaki tutarlar satışın tamamıdır."
-              : "Satış tutarı satışın kendi para birimindedir; ciro, FIFO maliyeti ve brüt kâr TL'dir (satış günü kuruyla sabitlenir)."
+              : "Satış tutarı satışın kendi para birimindedir; ciro ve brüt kâr TL'dir (satış günü kuruyla sabitlenir)."
         }
         actions={
           <nav aria-label="Satış durumu">
@@ -579,14 +582,6 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
                       Satış tutarı
                     </th>
                     <SortTh label="Ciro" title="Ciro, TL (satış günü kuruyla)" column="revenue_try" align="right" {...sortProps} />
-                    <SortTh
-                      label="FIFO maliyeti"
-                      title="FIFO parti maliyeti, TL"
-                      column="cogs_try"
-                      align="right"
-                      className={WIDE_CELL}
-                      {...sortProps}
-                    />
                     <SortTh label="Brüt kâr" title="Gerçekleşmiş brüt kâr, TL" column="gross_profit_try" align="right" {...sortProps} />
                     <SortTh label="Marj" column="margin_pct" align="right" className="hidden xl:table-cell" {...sortProps} />
                     <th className={WIDE_CELL}>Durum</th>
@@ -632,7 +627,6 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
                           {s.currency === "USD" ? <span className="block text-[11px] text-ink-muted">kur {fmtRate(s.fx_rate)}</span> : null}
                         </td>
                         <td className={cx("num", off ? STRIKE : "font-medium text-ink")}>{fmtMoney(s.revenue_try, "TRY")}</td>
-                        <td className={cx("num", WIDE_CELL, off && STRIKE)}>{fmtMoney(s.cogs_try, "TRY")}</td>
                         <td className={cx("num", off ? STRIKE : cx("font-medium", profitTone(s.gross_profit_try)))}>
                           {fmtMoney(s.gross_profit_try, "TRY")}
                           {/* Marj sütunu gizliyken (xl altı) kârın altında */}

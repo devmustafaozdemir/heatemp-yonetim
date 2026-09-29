@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CostChange } from "@/components/status";
 import { Card, ErrorState, TableWrap } from "@/components/ui";
 import type { AuthContext } from "@/lib/auth";
-import { fmtDate, fmtMinutes, fmtMoney, fmtPct, fmtUnitMoney } from "@/lib/format";
+import { fmtDate, fmtMinutes100, fmtMoney, fmtPct, fmtUnitMoney } from "@/lib/format";
 import { parseListParams, type SearchParams } from "@/lib/list-params";
 import { load } from "@/lib/query";
 import type { Product, VariantOverview, VariantView } from "@/lib/types";
@@ -63,7 +63,7 @@ export async function CostTab({ ctx, product, variants, sp }: { ctx: AuthContext
                       Son değişim
                     </th>
                     <th className="num whitespace-normal" title="Tanımlı satış fiyatı ile tahmini reçete maliyeti arasındaki fark (fiyatın para biriminde)">
-                      Fiyat − tahmini maliyet
+                      Tahmini kâr
                     </th>
                     <th className="num whitespace-normal">Birim üretim süresi</th>
                   </tr>
@@ -129,7 +129,7 @@ export async function CostTab({ ctx, product, variants, sp }: { ctx: AuthContext
                           )}
                         </td>
                         <td className="num">
-                          <div>{fmtMinutes(v.unit_production_minutes)}</div>
+                          <div>{fmtMinutes100(v.unit_production_minutes)}</div>
                           <SourceTag overridden={v.minutes_overridden} />
                         </td>
                       </tr>
@@ -162,7 +162,7 @@ export async function CostTab({ ctx, product, variants, sp }: { ctx: AuthContext
                       <div className="min-w-0">
                         <dt className="text-xs text-ink-muted">Birim üretim süresi</dt>
                         <dd className="tabular-nums">
-                          {fmtMinutes(v.unit_production_minutes)} <SourceTag overridden={v.minutes_overridden} />
+                          {fmtMinutes100(v.unit_production_minutes)} <SourceTag overridden={v.minutes_overridden} />
                         </dd>
                       </div>
                       <div className="min-w-0">
@@ -204,7 +204,7 @@ export async function CostTab({ ctx, product, variants, sp }: { ctx: AuthContext
                         )}
                       </div>
                       <div className="col-span-2 min-w-0">
-                        <dt className="text-xs text-ink-muted">Fiyat − tahmini maliyet</dt>
+                        <dt className="text-xs text-ink-muted">Tahmini kâr</dt>
                         <dd className="tabular-nums">
                           {m ? (
                             <>

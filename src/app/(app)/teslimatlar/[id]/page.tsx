@@ -334,7 +334,7 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
         <div className="grid min-w-0 content-start gap-4">
           <Card
             title="Parti katmanları"
-            description="Bu teslimatla Mekonsis rafına aktarılan partiler (FIFO veya seçilen parti). Parti kimliği ve birim maliyeti korunur."
+            description="Bu teslimatla Mekonsis rafına aktarılan partiler (en eski parti veya seçilen parti). Parti kimliği ve birim maliyeti korunur."
             icon={Layers}
             padded={false}
           >
@@ -418,7 +418,7 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
 
           <Card
             title="Bu teslimattan yapılan satışlar"
-            description="Satışlar Mekonsis rafındaki en eski teslimattan başlayarak (FIFO) tahsis edilir. Maliyet, partinin kayıtlı birim maliyetidir."
+            description="Satışlar Mekonsis rafındaki en eski teslimattan başlayarak tahsis edilir. Maliyet, partinin kayıtlı birim maliyetidir."
             icon={Receipt}
             padded={false}
             footer={

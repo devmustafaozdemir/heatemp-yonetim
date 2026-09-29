@@ -90,6 +90,16 @@ export async function correctPurchase(formData: FormData) {
   });
 }
 
+/** Hammaddeyi hareketleri ve reçete satırlarıyla siler (üretimde kullanıldıysa veritabanı reddeder). */
+export async function deleteMaterial(formData: FormData) {
+  return adminAction(formData, async (ctx, form) => {
+    const id = form.id("id", "Malzeme");
+    form.assertValid();
+    unwrap(await ctx.supabase.rpc("delete_raw_material", { p_material_id: id }));
+    return { message: "Malzeme silindi.", redirectTo: "/hammadde" };
+  });
+}
+
 /** Alışın yalnız tedarikçisini değiştirir (maliyet ve stok aynen kalır). */
 export async function setPurchaseSupplier(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {

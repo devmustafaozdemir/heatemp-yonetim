@@ -29,6 +29,7 @@ export function ProductFinanceTable({
   scope,
   showUsd,
   companyStock,
+  basePath = "/kasa",
 }: {
   error: string | null;
   rows: FinanceRow[];
@@ -40,8 +41,9 @@ export function ProductFinanceTable({
   showUsd: boolean;
   /** Tüm varyantların güncel stok/üretim toplamı (v_variant_overview); listelenenler bir alt küme olabilir. */
   companyStock: StockTotals | null;
+  /** Sıralama/kapsam bağlantılarının sayfası (genel veya ortak kasası) */
+  basePath?: string;
 }) {
-  const basePath = "/kasa";
   const th = { sort, dir, basePath, values };
   const totalRevenue = rows.reduce((a, r) => a + r.revenue, 0);
   const t = rows.reduce(
@@ -116,7 +118,6 @@ export function ProductFinanceTable({
       }
       footer={
         <span>
-          <strong className="font-medium text-ink-soft">FIFO maliyeti:</strong> satılan adetlerin çekildiği parti katmanlarının maliyeti.{" "}
           <strong className="font-medium text-ink-soft">Üretilen:</strong> tamamlanmış üretim partileri, açılış stoğu hariç.{" "}
           <strong className="font-medium text-ink-soft">Açılış:</strong> sisteme aktarılan açılış stoğu adedi (üretim sayılmaz).{" "}
           <strong className="font-medium text-ink-soft">Stok değeri:</strong> Heatemp ve Mekonsis raflarında kalan adetlerin parti maliyeti.
@@ -148,7 +149,7 @@ export function ProductFinanceTable({
                 <th className="sticky left-0 z-[1] border-r border-line">
                   <span className="sr-only">Sütun grupları</span>
                 </th>
-                <th colSpan={5} className="border-r border-line text-center text-[11px] tracking-wider text-ink-muted uppercase">
+                <th colSpan={4} className="border-r border-line text-center text-[11px] tracking-wider text-ink-muted uppercase">
                   Seçilen dönem · TL
                 </th>
                 <th colSpan={4} className="text-center text-[11px] tracking-wider text-ink-muted uppercase">
@@ -159,7 +160,6 @@ export function ProductFinanceTable({
                 <SortTh label="Ürün / varyant" column="urun" {...th} className="sticky left-0 z-[1] border-r border-line" />
                 <SortTh label="Adet" column="adet" align="right" {...th} />
                 <SortTh label="Ciro · pay" column="ciro" align="right" {...th} title="Ciro ve dönem cirosu içindeki payı" />
-                <SortTh label="FIFO maliyeti" column="maliyet" align="right" {...th} />
                 <SortTh
                   label="Brüt kâr"
                   column="kar"
@@ -209,7 +209,6 @@ export function ProductFinanceTable({
                         <span className="w-11 text-[11px] text-ink-muted">{pct1(share)}</span>
                       </div>
                     </td>
-                    <td className="num">{fmtMoney(r.cogs, "TRY")}</td>
                     <td className="num">
                       <span className={cx("font-medium", r.profit < 0 ? "text-chart-red" : "text-ink")}>{fmtMoney(r.profit, "TRY")}</span>
                       {showUsd ? <div className="text-[11px] text-ink-muted">≈ {fmtMoney(r.profit_usd, "USD")}</div> : null}
@@ -239,7 +238,6 @@ export function ProductFinanceTable({
                 </td>
                 <td className="num">{fmtInt(t.quantity)}</td>
                 <td className="num">{fmtMoney(t.revenue, "TRY")}</td>
-                <td className="num">{fmtMoney(t.cogs, "TRY")}</td>
                 <td className="num">
                   <span className={cx(t.profit < 0 && "text-chart-red")}>{fmtMoney(t.profit, "TRY")}</span>
                   {showUsd ? <div className="text-[11px] font-normal text-ink-muted">≈ {fmtMoney(t.profitUsd, "USD")}</div> : null}
@@ -263,7 +261,7 @@ export function ProductFinanceTable({
                       (tüm {fmtInt(companyStock.variants)} varyant)
                     </span>
                   </td>
-                  <td colSpan={5} className="border-r border-line text-right text-xs font-normal text-ink-muted">
+                  <td colSpan={4} className="border-r border-line text-right text-xs font-normal text-ink-muted">
                     Güncel stok ve üretim; dönem satışlarının tamamı üst satırda.
                   </td>
                   <td className="num">{fmtInt(companyStock.produced)}</td>

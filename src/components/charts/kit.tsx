@@ -196,6 +196,8 @@ export function DonutChart({
                 ))}
               </Pie>
               <Tooltip
+                // Ortadaki toplam etiketi tooltip'in üstüne binmesin.
+                wrapperStyle={{ zIndex: 20 }}
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
                   const p = payload[0].payload as (typeof data)[number];

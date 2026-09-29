@@ -1,4 +1,4 @@
-import { AlertCircle, Ban, Banknote, FileText, Layers, Plus, Receipt, TrendingUp } from "lucide-react";
+import { AlertCircle, Ban, Banknote, FileText, Layers, Plus, Receipt, Split, TrendingUp } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -15,6 +15,7 @@ import { load, must } from "@/lib/query";
 import type { SaleAllocationView, SaleItemView, SaleView } from "@/lib/types";
 import { fmtRatio, marginPct } from "../_components/fmt";
 import { cancelSale } from "../actions";
+import { SHARE_LABEL, splitShares } from "@/lib/shares";
 
 export const metadata: Metadata = { title: "Satış" };
 
@@ -60,17 +61,14 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
   const qty = Number(sale.total_quantity);
   const revenue = Number(sale.revenue_try);
   const cogs = Number(sale.cogs_try);
+  const shares = splitShares(Number(sale.revenue_try));
   const profit = Number(sale.gross_profit_try);
   const allocs = allocations.data ?? [];
   const batchCount = new Set(allocs.map((a) => a.batch_id)).size;
   const deliveryCount = new Set(allocs.map((a) => a.delivery_id)).size;
   const allocQty = allocs.reduce((s, a) => s + a.quantity, 0);
   const allocCost = allocs.reduce((s, a) => s + Number(a.cost_try), 0);
-  // Marj tek kaynaktan (kâr / ciro, 1 ondalık); maliyet payı 100 − marj olduğundan ikisi her zaman %100,0 eder.
   const margin = marginPct(profit, revenue);
-  const costPct = margin !== null ? 100 - margin : null;
-  const costShare = costPct !== null ? Math.min(100, Math.max(0, costPct)) : 0;
-  const profitShare = revenue > 0 ? Math.max(0, 100 - costShare) : 0;
   const fxText = `${fxSourceLabel(sale.fx_source)}, ${fmtDate(sale.fx_rate_date)}`;
   const q = quote?.data ?? null;
   // İptal edilen satışın tutarları gösterilir ama gerçekleşmiş sayılmaz: soluk ve üstü çizili.
@@ -130,7 +128,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                   <ActionForm action={cancelSale}>
                     <input type="hidden" name="sale_id" value={sale.id} />
                     <Alert tone="warning" className="mb-4">
-                      Satış ciro ve kâr toplamlarından çıkar. FIFO tahsisleri aynı parti katmanlarına bir kez geri döner; {fmtInt(qty)} adet Mekonsis
+                      Satış ciro ve kâr toplamlarından çıkar. Satılan adetler aynı parti katmanlarına bir kez geri döner; {fmtInt(qty)} adet Mekonsis
                       rafına geri alınır.
                     </Alert>
                     <FormField name="reason" label="İptal gerekçesi" required hint="En fazla 500 karakter. Satış kaydında saklanır.">
@@ -185,16 +183,12 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
           }
         />
         <StatCard
-          label="FIFO maliyeti"
+          label={`Heatemp payı (${SHARE_LABEL.heatemp})`}
           scope={cardScope()}
-          value={money(fmtMoney(cogs, "TRY"))}
-          icon={Layers}
+          value={money(fmtMoney(shares.heatemp, "TRY"))}
+          icon={Split}
           tone={cardTone("violet")}
-          description={
-            cancelled
-              ? `${fmtInt(qty)} adet aynı parti katmanlarına geri döndü`
-              : `FIFO · ${fmtInt(batchCount)} parti · ort. ${fmtUnitMoney(qty > 0 ? cogs / qty : null, "TRY")} / adet`
-          }
+          description={`Mekonsis payı (${SHARE_LABEL.mekonsis}) ${fmtMoney(shares.mekonsis, "TRY")} · cirodan`}
         />
         <StatCard
           label="Brüt kâr"
@@ -208,12 +202,12 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card
-          title="Kâr hesabı"
-          icon={TrendingUp}
+          title="Pay dağılımı"
+          icon={Split}
           description={
             cancelled
-              ? "Satış iptal edildi; aşağıdaki tutarlar bilgi amaçlıdır ve ciro/kâr toplamlarına dahil değildir."
-              : "Satış günü kuruyla ciro, FIFO ile tahsis edilen parti maliyeti"
+              ? "Satış iptal edildi; aşağıdaki tutarlar bilgi amaçlıdır ve toplamlara dahil değildir."
+              : "Satış günü kuruyla ciro; Heatemp %66 + Mekonsis %33, kalan %1 eşit dağıtılır"
           }
         >
           <dl className={cx("text-[13px]", cancelled && "text-ink-muted")}>
@@ -221,53 +215,27 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
               <dt className="text-ink-muted">Ciro (TL, satış günü)</dt>
               <dd className={cx("font-medium tabular-nums", cancelled ? STRIKE : "text-ink")}>{fmtMoney(revenue, "TRY")}</dd>
             </div>
-            <div className="flex items-baseline justify-between gap-3 py-1.5">
-              <dt className="text-ink-muted">Satılan ürün maliyeti (FIFO, TL)</dt>
-              <dd className={cx("font-medium tabular-nums", cancelled ? STRIKE : "text-ink")}>−{fmtMoney(cogs, "TRY")}</dd>
+            <div className="flex items-baseline justify-between gap-3 border-t border-line py-1.5">
+              <dt className="font-semibold text-ink">Heatemp payı ({SHARE_LABEL.heatemp})</dt>
+              <dd className={cx("text-[15px] font-semibold tabular-nums", cancelled ? STRIKE : "text-ink")}>{fmtMoney(shares.heatemp, "TRY")}</dd>
             </div>
-            <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-line-strong pt-2.5">
-              {cancelled ? (
-                <dt className="font-semibold text-ink-soft">
-                  İptal edilen satışın brüt kârı (TL)
-                  <span className="block text-xs font-normal text-ink-muted">Toplamlara dahil değil</span>
-                </dt>
-              ) : (
-                <dt className="font-semibold text-ink">Gerçekleşmiş brüt kâr (TL)</dt>
-              )}
-              <dd className={cx("text-[17px] font-semibold tabular-nums", cancelled ? STRIKE : profitTone(profit))}>{fmtMoney(profit, "TRY")}</dd>
+            <div className="flex items-baseline justify-between gap-3 py-1.5">
+              <dt className="font-semibold text-ink">Mekonsis payı ({SHARE_LABEL.mekonsis})</dt>
+              <dd className={cx("text-[15px] font-semibold tabular-nums", cancelled ? STRIKE : "text-ink")}>{fmtMoney(shares.mekonsis, "TRY")}</dd>
             </div>
           </dl>
           {revenue > 0 ? (
-            <div className="mt-4">
-              <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-canvas" aria-hidden>
-                <div
-                  className={cx("h-full", cancelled ? "bg-line-strong" : profit < 0 ? "bg-chart-red" : "bg-chart-violet")}
-                  style={{ width: `${costShare}%` }}
-                />
-                {profitShare > 0 ? (
-                  <div className={cx("h-full", cancelled ? "bg-ink-muted/30" : "bg-chart-teal")} style={{ width: `${profitShare}%` }} />
-                ) : null}
-              </div>
-              <ul className="mt-2 flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-ink-soft tabular-nums">
-                <li className="inline-flex items-center gap-1.5">
-                  <span className={cx("size-2.5 rounded-sm", cancelled ? "bg-line-strong" : "bg-chart-violet")} aria-hidden />
-                  Maliyet payı {fmtRatio(costPct)}
-                </li>
-                <li className="inline-flex items-center gap-1.5">
-                  <span className={cx("size-2.5 rounded-sm", cancelled ? "bg-ink-muted/30" : "bg-chart-teal")} aria-hidden />
-                  Brüt marj {fmtRatio(margin)}
-                </li>
-              </ul>
+            <div className="mt-3 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-canvas" aria-hidden>
+              <div className={cx("h-full", cancelled ? "bg-line-strong" : "bg-chart-brand")} style={{ width: "66.5%" }} />
+              <div className={cx("h-full", cancelled ? "bg-ink-muted/30" : "bg-chart-teal")} style={{ width: "33.5%" }} />
             </div>
           ) : null}
-          <div className="mt-4 rounded-md bg-canvas px-3 py-2 text-xs text-ink-soft">
-            <span className="font-medium text-ink-soft">Bilgi amaçlı (USD):</span> ciro {fmtMoney(sale.revenue_usd, "USD")} · maliyet{" "}
-            {fmtMoney(sale.cogs_usd, "USD")} · brüt kâr {fmtMoney(sale.gross_profit_usd, "USD")}
-          </div>
-          <p className="mt-3 text-xs text-ink-muted">
-            Ciro satış günündeki kurla TL&apos;ye çevrilip sabitlenir; maliyet, tahsis edilen partilerin üretimde kaydedilen TL maliyetidir. Mekonsis
-            komisyonu yoktur; satış tutarının tamamı Heatemp gelirdir.
-          </p>
+          {cur === "USD" ? (
+            <div className="mt-4 rounded-md bg-canvas px-3 py-2 text-xs text-ink-soft">
+              <span className="font-medium text-ink-soft">Satış para biriminde:</span> Heatemp {fmtMoney(splitShares(Number(sale.total_amount)).heatemp, cur)} ·
+              Mekonsis {fmtMoney(splitShares(Number(sale.total_amount)).mekonsis, cur)}
+            </div>
+          ) : null}
         </Card>
 
         <Card title="Satış bilgileri" icon={FileText}>
@@ -352,7 +320,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
         title="Kalemler"
         padded={false}
         className="mb-4"
-        description="Birim fiyat ve tutar satışın para birimindedir; ciro, maliyet ve kâr TL'dir."
+        description="Birim fiyat ve tutar satışın para birimindedir; ciro ve kâr TL'dir."
       >
         {items.error ? (
           <ErrorState message={items.error} compact />
@@ -381,14 +349,10 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                       </span>
                       {lp !== null ? <ListDiffBadge diff={diff} same={same} /> : null}
                     </p>
-                    <dl className={cx("mt-2 grid grid-cols-3 gap-2 rounded-md bg-canvas px-2.5 py-2 text-xs tabular-nums", cancelled && STRIKE)}>
+                    <dl className={cx("mt-2 grid grid-cols-2 gap-2 rounded-md bg-canvas px-2.5 py-2 text-xs tabular-nums", cancelled && STRIKE)}>
                       <div className="min-w-0">
                         <dt className="text-ink-muted">Ciro</dt>
                         <dd className="font-medium text-ink">{fmtMoney(it.revenue_try, "TRY")}</dd>
-                      </div>
-                      <div className="min-w-0">
-                        <dt className="text-ink-muted">FIFO maliyeti</dt>
-                        <dd className="font-medium text-ink">{fmtMoney(it.cogs_try, "TRY")}</dd>
                       </div>
                       <div className="min-w-0">
                         <dt className="text-ink-muted">Brüt kâr · {fmtRatio(itMargin)}</dt>
@@ -409,7 +373,6 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                     <th className="num hidden lg:table-cell">Liste fiyatı</th>
                     <th className="num hidden md:table-cell">Tutar</th>
                     <th className="num">Ciro (TL)</th>
-                    <th className="num hidden lg:table-cell">FIFO maliyeti (TL)</th>
                     <th className="num">Brüt kâr (TL)</th>
                     <th className="num hidden lg:table-cell">Marj</th>
                   </tr>
@@ -436,12 +399,6 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                         </td>
                         <td className={cx("num hidden md:table-cell", cancelled && STRIKE)}>{fmtMoney(it.line_total, cur)}</td>
                         <td className={cx("num", cancelled && STRIKE)}>{fmtMoney(it.revenue_try, "TRY")}</td>
-                        <td className={cx("num hidden lg:table-cell", cancelled && STRIKE)}>
-                          {fmtMoney(it.cogs_try, "TRY")}
-                          <span className="block text-[11px] text-ink-muted">
-                            {fmtUnitMoney(it.quantity ? Number(it.cogs_try) / it.quantity : null, "TRY")} / adet
-                          </span>
-                        </td>
                         <td className={cx("num font-medium", cancelled ? STRIKE : profitTone(it.gross_profit_try))}>{fmtMoney(it.gross_profit_try, "TRY")}</td>
                         <td className={cx("num hidden lg:table-cell", cancelled && STRIKE)}>{fmtRatio(itMargin)}</td>
                       </tr>
@@ -457,7 +414,6 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                       <td className="hidden lg:table-cell" />
                       <td className={cx("num hidden md:table-cell", cancelled && STRIKE)}>{fmtMoney(sale.total_amount, cur)}</td>
                       <td className={cx("num", cancelled && STRIKE)}>{fmtMoney(revenue, "TRY")}</td>
-                      <td className={cx("num hidden lg:table-cell", cancelled && STRIKE)}>{fmtMoney(cogs, "TRY")}</td>
                       <td className={cx("num", cancelled && STRIKE)}>{fmtMoney(profit, "TRY")}</td>
                       <td className={cx("num hidden lg:table-cell", cancelled && STRIKE)}>{fmtRatio(margin)}</td>
                     </tr>
@@ -476,13 +432,13 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
       </Card>
 
       <Card
-        title="Kullanılan partiler (FIFO)"
+        title="Kullanılan partiler"
         icon={Layers}
         padded={false}
         description={
           cancelled
             ? "Satış iptal edildiği için bu adetler aynı parti katmanlarına, Mekonsis rafına geri döndü."
-            : "Satılan adetler Mekonsis rafındaki en eski teslimat katmanlarından düşülür. Maliyet, partinin üretimde kaydedilen TL birim maliyetidir."
+            : "Satılan adetler Mekonsis rafındaki en eski teslimat katmanlarından düşülür."
         }
       >
         {allocations.error ? (

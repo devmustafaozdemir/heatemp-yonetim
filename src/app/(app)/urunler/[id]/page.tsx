@@ -7,7 +7,7 @@ import { Alert, Badge, ButtonLink, Card, PageHeader } from "@/components/ui";
 import { Drawer } from "@/components/ui/dialog";
 import { LinkTabs } from "@/components/ui/list";
 import { getAuthContext, requireMember } from "@/lib/auth";
-import { fmtDate, fmtInt, fmtMinutes, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtInt, fmtMinutes100, fmtMoney } from "@/lib/format";
 import { first, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
@@ -15,7 +15,8 @@ import type { Product, VariantView } from "@/lib/types";
 import { KpiStrip, ProductThumb, ShelfSplit, fmtCostRange } from "../_components/bits";
 import { TabLabel } from "../_components/TabLabel";
 import type { ProductListRow, RecipeCostRow } from "../_components/types";
-import { createVariant } from "../actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { createVariant, deleteProduct } from "../actions";
 import { VariantFields } from "../VariantFields";
 import { BomTab } from "./BomTab";
 import { CostTab } from "./CostTab";
@@ -130,6 +131,12 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 </ActionForm>
               </Drawer>
             ) : null}
+            {isAdmin ? (
+              <DeleteButton action={deleteProduct} fields={{ id: product.id }} title={`${product.name} silinsin mi?`} variant="secondary">
+                Ürün, tüm varyantları ve reçeteleriyle kalıcı olarak silinir. Üretim, stok, teslimat, satış veya teklif kaydı olan ürün
+                silinemez; bunun yerine pasif yapın.
+              </DeleteButton>
+            ) : null}
           </>
         }
       />
@@ -173,8 +180,8 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                   sub: s.last_completed_at ? `Son parti ${fmtDate(s.last_completed_at)}` : "Tamamlanmış üretim yok",
                 },
                 {
-                  label: "Birim üretim süresi",
-                  value: fmtMinutes(product.unit_production_minutes),
+                  label: "Üretim süresi (100 adet)",
+                  value: fmtMinutes100(product.unit_production_minutes),
                   sub: s.minutes_override_count > 0 ? `${fmtInt(s.minutes_override_count)} varyantta özel süre` : "1 adet için",
                 },
               ]}
