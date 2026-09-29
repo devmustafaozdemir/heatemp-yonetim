@@ -31,7 +31,7 @@ import { load, must } from "@/lib/query";
 import type { MaterialMovement, SupplierOption, Unit, UnitKind } from "@/lib/types";
 import { updateMaterial } from "../actions";
 import { KindBadge, MOVEMENT_META, MOVEMENT_ORDER, MaterialStateBadge, MovementBadge, movementTypeFromKey } from "../_components/bits";
-import { CorrectPurchase, DeleteMovement } from "../_components/CorrectPurchase";
+import { CorrectPurchase, DeleteMovement, PurchaseSupplier } from "../_components/CorrectPurchase";
 import { lastPageOf, loadPage } from "../_components/paging";
 import { StockFlowChart, type StockFlowPoint } from "../_components/StockFlowChart";
 import { toOption, type MaterialListRow, type MonthlyFlowRow } from "../_components/types";
@@ -249,10 +249,15 @@ export default async function MaterialPage({
   const LOCK_TITLE = "Bu hareketten sonra malzeme üretimde kullanıldı veya fire yazıldı; farkı yeni bir alış veya fire kaydıyla girin.";
   const correctionCell = (m: MaterialMovement, compact: boolean) => {
     const s = correctionState(m);
+    const q = `${fmtNum(Math.abs(Number(m.qty)) / Number(material.display_factor), 3)} ${material.display_unit}`;
+    const summary = `${fmtDate(m.movement_date)} · ${MOVEMENT_META[m.movement_type].label} · ${q}`;
+    const supplierButton =
+      m.movement_type === "purchase" && s !== "reversed" ? (
+        <PurchaseSupplier id={Number(m.id)} supplierId={m.supplier_id ?? null} suppliers={suppliers} summary={summary} compact={compact} />
+      ) : null;
     if (s === "open") {
-      const q = `${fmtNum(Math.abs(Number(m.qty)) / Number(material.display_factor), 3)} ${material.display_unit}`;
       return (
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex flex-wrap items-center gap-1">
           {m.movement_type === "purchase" ? (
             <CorrectPurchase
               compact={compact}
@@ -275,20 +280,20 @@ export default async function MaterialPage({
               }}
             />
           ) : null}
-          <DeleteMovement
-            id={Number(m.id)}
-            compact={compact}
-            summary={`${fmtDate(m.movement_date)} · ${MOVEMENT_META[m.movement_type].label} · ${q}`}
-          />
+          {supplierButton}
+          <DeleteMovement id={Number(m.id)} compact={compact} summary={summary} />
         </span>
       );
     }
     if (s === "reversed") return <Badge>İptal edildi</Badge>;
     if (s === "locked")
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-ink-muted" title={LOCK_TITLE}>
-          <Lock className="size-3.5" aria-hidden />
-          Kilitli
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {supplierButton}
+          <span className="inline-flex items-center gap-1 text-xs text-ink-muted" title={LOCK_TITLE}>
+            <Lock className="size-3.5" aria-hidden />
+            Kilitli
+          </span>
         </span>
       );
     return null;

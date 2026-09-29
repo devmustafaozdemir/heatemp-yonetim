@@ -47,8 +47,9 @@ select distinct on (lower(btrim(supplier))) btrim(supplier)
  order by lower(btrim(supplier)), btrim(supplier)
 on conflict do nothing;
 
+-- Yalnız bağlantı kurulur; satırdaki tedarikçi metni ve diğer tüm değerler olduğu gibi kalır.
 update public.material_movements m
-   set supplier_id = s.id, supplier = s.name
+   set supplier_id = s.id
   from public.suppliers s
  where m.supplier_id is null and m.supplier is not null and lower(btrim(m.supplier)) = lower(btrim(s.name));
 

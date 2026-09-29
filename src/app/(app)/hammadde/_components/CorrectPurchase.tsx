@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { Handshake, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { FxRateField } from "@/components/FxRateField";
 import { ActionForm, FormActions, FormField, SubmitButton } from "@/components/forms";
@@ -8,7 +8,7 @@ import { Alert, FormSection } from "@/components/ui";
 import { Drawer, Modal } from "@/components/ui/dialog";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import type { SupplierOption, Unit } from "@/lib/types";
-import { correctPurchase, deleteMovement } from "../actions";
+import { correctPurchase, deleteMovement, setPurchaseSupplier } from "../actions";
 import { SupplierSelect } from "./SupplierSelect";
 import { VatFields } from "./VatFields";
 
@@ -165,6 +165,47 @@ export function DeleteMovement({ id, summary, compact = false }: { id: number; s
         </p>
         <FormActions>
           <SubmitButton variant="danger">Sil</SubmitButton>
+        </FormActions>
+      </ActionForm>
+    </Modal>
+  );
+}
+
+/** Mevcut alışa yalnız tedarikçi seçimi (kilitli alışlarda da kullanılabilir). */
+export function PurchaseSupplier({
+  id,
+  supplierId,
+  suppliers,
+  summary,
+  compact = false,
+}: {
+  id: number;
+  supplierId: string | null;
+  suppliers: SupplierOption[];
+  summary: string;
+  compact?: boolean;
+}) {
+  return (
+    <Modal
+      trigger={
+        <>
+          <Handshake aria-hidden />
+          {compact ? null : "Tedarikçi"}
+        </>
+      }
+      triggerVariant={compact ? "ghost" : "secondary"}
+      triggerSize="sm"
+      triggerLabel={compact ? "Tedarikçi seç" : undefined}
+      title="Tedarikçi seç"
+      description={summary}
+      size="sm"
+    >
+      <ActionForm action={setPurchaseSupplier} className="space-y-4">
+        <input type="hidden" name="movement_id" value={id} />
+        <SupplierSelect suppliers={suppliers} defaultValue={supplierId} />
+        <p className="text-xs text-ink-muted">Yalnız tedarikçi değişir; miktar, fiyat, maliyet ve stok aynen kalır.</p>
+        <FormActions>
+          <SubmitButton>Kaydet</SubmitButton>
         </FormActions>
       </ActionForm>
     </Modal>

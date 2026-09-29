@@ -90,6 +90,19 @@ export async function correctPurchase(formData: FormData) {
   });
 }
 
+/** Alışın yalnız tedarikçisini değiştirir (maliyet ve stok aynen kalır). */
+export async function setPurchaseSupplier(formData: FormData) {
+  return adminAction(formData, async (ctx, form) => {
+    const args = {
+      p_movement_id: form.bigintId("movement_id", "Hareket"),
+      p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
+    };
+    form.assertValid();
+    unwrap(await ctx.supabase.rpc("set_purchase_supplier", args));
+    return { message: args.p_supplier_id ? "Tedarikçi kaydedildi." : "Tedarikçi kaldırıldı." };
+  });
+}
+
 /** Alış veya fire hareketini siler. */
 export async function deleteMovement(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {

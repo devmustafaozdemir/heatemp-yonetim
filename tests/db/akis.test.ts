@@ -637,6 +637,25 @@ describe("Tedarikçiler", () => {
     );
   });
 
+  it("üretimde kullanılmış alışa da yalnız tedarikçi seçilebilir; maliyet değişmez", async () => {
+    const f = await setupProduct(admin);
+    const tel = await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
+    await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
+    await produce(f, 10);
+    const tag = Math.random().toString(36).slice(2, 8);
+    const [sup] = await query(f.admin, "insert into public.suppliers (name) values ($1) returning id", [`Tel ${tag}`]);
+    const [before] = await sql("select * from public.material_movements where id = $1", [tel]);
+    await rpc(f.admin, "set_purchase_supplier", { p_movement_id: tel, p_supplier_id: sup.id });
+    const [after] = await sql("select * from public.material_movements where id = $1", [tel]);
+    expect(after.supplier_id).toBe(sup.id);
+    expect(after.supplier).toBe(`Tel ${tag}`);
+    expect(after.value_try).toBe(before.value_try);
+    expect(after.corrected_at).toBeNull();
+    await rpc(f.admin, "set_purchase_supplier", { p_movement_id: tel, p_supplier_id: null });
+    const [cleared] = await sql("select supplier_id, supplier from public.material_movements where id = $1", [tel]);
+    expect(cleared.supplier_id).toBeNull();
+  });
+
   it("görüntüleyici tedarikçi ekleyemez", async () => {
     const viewer = await createUser("viewer");
     await expectError(query(viewer, "insert into public.suppliers (name) values ('X')"), /row-level security/);

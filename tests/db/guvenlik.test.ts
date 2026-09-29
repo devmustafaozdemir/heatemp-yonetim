@@ -149,6 +149,7 @@ const DEFINER_ALLOWLIST = [
   "start_production(uuid,integer,bigint,text,uuid)",
   "write_off_material(uuid,numeric,text,text,uuid)",
   "update_material_purchase(bigint,numeric,text,numeric,text,bigint,date,uuid,text,numeric,numeric)",
+  "set_purchase_supplier(bigint,uuid)",
 ].sort();
 
 /** Salt okunur rapor fonksiyonları (SECURITY INVOKER): üye olmayan hiçbir veri görmemeli. */
