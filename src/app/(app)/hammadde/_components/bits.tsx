@@ -6,6 +6,7 @@ import {
   CircleSlash,
   Factory,
   PackageMinus,
+  RotateCcw,
   Undo2,
   type LucideIcon,
 } from "lucide-react";
@@ -53,9 +54,10 @@ export const MOVEMENT_META: Record<MovementType, { label: string; short: string;
   production_consume: { label: "Üretim tüketimi", short: "Üretim tüketimi", tone: "amber", icon: Factory, key: "uretim" },
   production_return: { label: "Parti iptali iadesi", short: "İptal iadesi", tone: "blue", icon: Undo2, key: "iade" },
   write_off: { label: "Fire / sayım düşümü", short: "Fire / sayım", tone: "red", icon: PackageMinus, key: "fire" },
+  purchase_reversal: { label: "Alış düzeltmesi / iptali", short: "Alış düzeltmesi", tone: "gray", icon: RotateCcw, key: "duzeltme" },
 };
 
-export const MOVEMENT_ORDER: MovementType[] = ["purchase", "production_consume", "production_return", "write_off"];
+export const MOVEMENT_ORDER: MovementType[] = ["purchase", "production_consume", "production_return", "write_off", "purchase_reversal"];
 
 export function movementTypeFromKey(key: string | undefined): MovementType | null {
   return MOVEMENT_ORDER.find((t) => MOVEMENT_META[t].key === key) ?? null;

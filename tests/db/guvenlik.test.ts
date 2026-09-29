@@ -134,6 +134,7 @@ const DEFINER_ALLOWLIST = [
   "complete_production(uuid)",
   "convert_quote_to_sale(uuid,date,bigint,uuid)",
   "copy_bom(uuid,uuid)",
+  "correct_material_purchase(bigint,text,numeric,text,numeric,text,bigint,date,text,text,uuid)",
   "deliver_to_mekonsis(uuid,integer,uuid,date,text,uuid)",
   "fx_rate_for_date(date)",
   "is_admin()",
