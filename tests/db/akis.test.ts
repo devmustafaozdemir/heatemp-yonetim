@@ -610,6 +610,39 @@ describe("Tutarlılık", () => {
   });
 });
 
+describe("Tedarikçiler", () => {
+  it("alışta seçilen tedarikçi listede toplanır; ad değişince hareketlerdeki ad güncellenir", async () => {
+    const f = await setupProduct(admin);
+    const tag = Math.random().toString(36).slice(2, 8);
+    const [sup] = await query(f.admin, "insert into public.suppliers (name) values ($1) returning id", [`Tel ${tag}`]);
+    const buy = await rpc<number>(f.admin, "receive_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 10,
+      p_unit: "kg",
+      p_unit_price: 5,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+      p_supplier_id: sup.id,
+    });
+    const [row] = await query(f.admin, "select * from public.v_supplier_list where id = $1", [sup.id]);
+    expect(Number(row.purchase_count)).toBe(1);
+    expect(Number(row.total_usd)).toBeCloseTo(50, 2);
+    await query(f.admin, "update public.suppliers set name = $2 where id = $1", [sup.id, `Tel Sanayi ${tag}`]);
+    const [m] = await sql("select supplier, supplier_id from public.material_movements where id = $1", [buy]);
+    expect(m.supplier).toBe(`Tel Sanayi ${tag}`);
+    expect(m.supplier_id).toBe(sup.id);
+    await expectError(
+      query(f.admin, "insert into public.suppliers (name) values ($1)", [`tel sanayi ${tag}`.toUpperCase()]),
+      /suppliers_name_unique/,
+    );
+  });
+
+  it("görüntüleyici tedarikçi ekleyemez", async () => {
+    const viewer = await createUser("viewer");
+    await expectError(query(viewer, "insert into public.suppliers (name) values ('X')"), /row-level security/);
+  });
+});
+
 describe("Hammadde alışı düzenleme / hareket silme", () => {
   it("alışı yerinde günceller; ters kayıt eklenmez, sonraki bakiyeler ve defter tutarlı kalır", async () => {
     const f = await setupProduct(admin);

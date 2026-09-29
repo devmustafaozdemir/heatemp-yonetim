@@ -8,7 +8,8 @@ import { Alert, FormSection, cx } from "@/components/ui";
 import { fmtMoney, fmtNum, fmtRate, fmtUnitMoney } from "@/lib/format";
 import type { FxSuggestion } from "@/lib/fx/service";
 import { parseDecimal } from "@/lib/parse";
-import type { Unit } from "@/lib/types";
+import type { SupplierOption, Unit } from "@/lib/types";
+import { SupplierSelect } from "./_components/SupplierSelect";
 import type { MaterialOption } from "./_components/types";
 import { receiveMaterial } from "./actions";
 
@@ -25,6 +26,7 @@ export function ReceiveForm({
   materials,
   initialMaterialId,
   units,
+  suppliers,
   today,
 }: {
   material?: MaterialOption;
@@ -32,6 +34,8 @@ export function ReceiveForm({
   initialMaterialId?: string;
   /** Tüm birimler; seçilen malzemenin birim türüne göre süzülür. */
   units: Unit[];
+  /** Tedarikçi seçimi (aktif olanlar listelenir) */
+  suppliers: SupplierOption[];
   today: string;
 }) {
   const initial = material ?? materials?.find((m) => m.id === initialMaterialId) ?? null;
@@ -43,7 +47,7 @@ export function ReceiveForm({
   const [price, setPrice] = useState("");
   const [currency, setCurrency] = useState<Cur>("USD");
   const [fx, setFx] = useState<FxSuggestion | null>(null);
-  const [supplier, setSupplier] = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [note, setNote] = useState("");
 
   const unitOptions = selected ? units.filter((u) => u.kind === selected.unit_kind) : [];
@@ -79,7 +83,7 @@ export function ReceiveForm({
         // Seçimler (malzeme, birim, para birimi, tarih) korunur; tutar alanları temizlenir.
         setQty("");
         setPrice("");
-        setSupplier("");
+        setSupplierId("");
         setNote("");
       }}
       className="@container"
@@ -192,16 +196,7 @@ export function ReceiveForm({
 
         <FormSection title="Tedarikçi ve not">
           <div className="grid grid-cols-1 gap-3 @md:grid-cols-2">
-            <FormField name="supplier" label="Tedarikçi">
-              <input
-                className="input"
-                name="supplier"
-                maxLength={160}
-                autoComplete="off"
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-              />
-            </FormField>
+            <SupplierSelect suppliers={suppliers} value={supplierId} onChange={setSupplierId} />
             <FormField name="note" label="Not">
               <input
                 className="input"

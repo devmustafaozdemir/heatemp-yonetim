@@ -7,8 +7,9 @@ import { ActionForm, FormActions, FormField, SubmitButton } from "@/components/f
 import { Alert, FormSection } from "@/components/ui";
 import { Drawer, Modal } from "@/components/ui/dialog";
 import { fmtMoney, fmtNum } from "@/lib/format";
-import type { Unit } from "@/lib/types";
+import type { SupplierOption, Unit } from "@/lib/types";
 import { correctPurchase, deleteMovement } from "../actions";
+import { SupplierSelect } from "./SupplierSelect";
 
 export interface CorrectablePurchase {
   id: number;
@@ -18,7 +19,7 @@ export interface CorrectablePurchase {
   unit_price: number | null;
   currency: "USD" | "TRY" | null;
   total_amount: number | null;
-  supplier: string | null;
+  supplier_id: string | null;
   note: string | null;
 }
 
@@ -28,11 +29,13 @@ const trDate = (iso: string) => iso.split("-").reverse().join(".");
 export function CorrectPurchase({
   movement,
   units,
+  suppliers,
   today,
   compact = false,
 }: {
   movement: CorrectablePurchase;
   units: Unit[];
+  suppliers: SupplierOption[];
   today: string;
   /** Tabloda yalnız ikonlu düğme */
   compact?: boolean;
@@ -106,9 +109,7 @@ export function CorrectPurchase({
 
         <FormSection title="Tedarikçi ve not">
           <div className="grid gap-3 sm:grid-cols-2">
-            <FormField name="supplier" label="Tedarikçi">
-              <input name="supplier" className="input" defaultValue={movement.supplier ?? ""} />
-            </FormField>
+            <SupplierSelect suppliers={suppliers} defaultValue={movement.supplier_id} />
             <FormField name="note" label="Not">
               <input name="note" className="input" defaultValue={movement.note ?? ""} />
             </FormField>

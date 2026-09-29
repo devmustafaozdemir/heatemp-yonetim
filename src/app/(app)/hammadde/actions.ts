@@ -48,7 +48,7 @@ export async function receiveMaterial(formData: FormData) {
       p_currency: form.oneOf("currency", "Para birimi", CURRENCIES),
       p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
       p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
-      p_supplier: form.text("supplier", "Tedarikçi", { max: 160 }),
+      p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
       p_note: form.text("note", "Not", { max: 500 }),
       p_request_id: form.requestId(),
     };
@@ -72,7 +72,7 @@ export async function correctPurchase(formData: FormData) {
       p_currency: form.oneOf("currency", "Para birimi", CURRENCIES),
       p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
       p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
-      p_supplier: form.text("supplier", "Tedarikçi", { max: 160 }),
+      p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
       p_note: form.text("note", "Not", { max: 500 }),
     };
     if (!args.p_fx_rate_id) {

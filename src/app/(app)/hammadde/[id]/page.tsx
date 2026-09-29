@@ -28,7 +28,7 @@ import { hrefWith, isoDateOrNull, parseListParams, searchPattern, type SearchPar
 import { isUuid } from "@/lib/parse";
 import { addDays, buckets } from "@/lib/period";
 import { load, must } from "@/lib/query";
-import type { MaterialMovement, Unit, UnitKind } from "@/lib/types";
+import type { MaterialMovement, SupplierOption, Unit, UnitKind } from "@/lib/types";
 import { updateMaterial } from "../actions";
 import { KindBadge, MOVEMENT_META, MOVEMENT_ORDER, MaterialStateBadge, MovementBadge, movementTypeFromKey } from "../_components/bits";
 import { CorrectPurchase, DeleteMovement } from "../_components/CorrectPurchase";
@@ -66,7 +66,19 @@ const UNIT_KIND_LABEL: Record<UnitKind, string> = {
 
 type LastPurchase = Pick<
   MaterialMovement,
-  "movement_date" | "entry_qty" | "entry_unit" | "unit_price" | "currency" | "total_amount" | "supplier"
+  | "movement_date"
+  | "entry_qty"
+  | "entry_unit"
+  | "unit_price"
+  | "currency"
+  | "total_amount"
+  | "supplier"
+  | "qty"
+  | "value_try"
+  | "unit_cost_try"
+  | "unit_cost_usd"
+  | "balance_qty_after"
+  | "balance_value_try_after"
 >;
 type BomUse = {
   id: string;
@@ -120,7 +132,7 @@ export default async function MaterialPage({
     return mq;
   };
 
-  const [units, movements, lastPurchase, flows, bom] = await Promise.all([
+  const [units, movements, lastPurchase, flows, bom, supplierRes] = await Promise.all([
     must(ctx.supabase.from("units").select("*").eq("kind", material.unit_kind).order("sort_order").returns<Unit[]>(), "Birimler"),
     loadPage(
       movementQuery("*")
@@ -132,13 +144,15 @@ export default async function MaterialPage({
     load(
       ctx.supabase
         .from("material_movements")
-        .select("movement_date, entry_qty, entry_unit, unit_price, currency, total_amount, supplier")
+        .select(
+          "movement_date, entry_qty, entry_unit, unit_price, currency, total_amount, supplier, qty, value_try, unit_cost_try, unit_cost_usd, balance_qty_after, balance_value_try_after",
+        )
         .eq("material_id", id)
         .eq("movement_type", "purchase")
         .order("movement_date", { ascending: false })
         .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle<LastPurchase>(),
+        .limit(2)
+        .returns<LastPurchase[]>(),
     ),
     load<MonthlyFlowRow[]>(ctx.supabase.rpc("material_monthly_flows", { p_material_id: id })),
     load(
@@ -148,7 +162,9 @@ export default async function MaterialPage({
         .eq("material_id", id)
         .returns<BomUse[]>(),
     ),
+    load(ctx.supabase.from("suppliers").select("id, name, is_active").order("name").returns<SupplierOption[]>()),
   ]);
+  const suppliers = supplierRes.data ?? [];
 
   // Eski / paylaşılmış bağlantıda sayfa numarası hareket sayısını aşıyorsa son geçerli sayfaya git.
   if (movements.outOfRange) {
@@ -234,6 +250,7 @@ export default async function MaterialPage({
             <CorrectPurchase
               compact={compact}
               units={units}
+              suppliers={suppliers}
               today={today}
               movement={{
                 id: Number(m.id),
@@ -243,7 +260,7 @@ export default async function MaterialPage({
                 unit_price: m.unit_price,
                 currency: m.currency,
                 total_amount: m.total_amount,
-                supplier: m.supplier,
+                supplier_id: m.supplier_id ?? null,
                 note: m.note,
               }}
             />
@@ -317,7 +334,20 @@ export default async function MaterialPage({
     balanceBase -= n.inQty - n.outQty;
   }
 
-  const last = lastPurchase.data;
+  const last = lastPurchase.data?.[0] ?? null;
+  const prev = lastPurchase.data?.[1] ?? null;
+  // Maliyet hareketi (%): son alışın birim maliyeti önceki alışa göre (USD, kurdan bağımsız fiyat değişimi)
+  // ve ortalama TL maliyetin son alışla değişimi (alış öncesi bakiye → alış sonrası bakiye).
+  const pctChange = (now: number, before: number) => (before > 0 ? ((now - before) / before) * 100 : null);
+  const purchaseDelta = last && prev ? pctChange(Number(last.unit_cost_usd), Number(prev.unit_cost_usd)) : null;
+  const beforeQty = last ? Number(last.balance_qty_after) - Number(last.qty) : 0;
+  const avgDelta =
+    last && beforeQty > 0
+      ? pctChange(
+          Number(last.balance_value_try_after) / Number(last.balance_qty_after),
+          (Number(last.balance_value_try_after) - Number(last.value_try)) / beforeQty,
+        )
+      : null;
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath: base, values };
   const movementFiltered = Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k));
 
@@ -350,7 +380,7 @@ export default async function MaterialPage({
                 description={`${material.name} · her alış kendi günündeki kurla sabitlenir.`}
                 size="lg"
               >
-                <ReceiveForm material={option} units={units} today={today} />
+                <ReceiveForm material={option} units={units} suppliers={suppliers} today={today} />
               </Drawer>
               <Drawer
                 trigger={
@@ -410,6 +440,7 @@ export default async function MaterialPage({
           unit={material.avg_cost_try_display !== null ? `/ ${unit}` : undefined}
           icon={Scale}
           tone="violet"
+          delta={last ? { pct: avgDelta, label: "son alışla", invert: true } : undefined}
           description={
             material.avg_cost_usd_display !== null
               ? `${fmtUnitMoney(material.avg_cost_usd_display, "USD")} / ${unit} · hareketli ağırlıklı ortalama`
@@ -428,6 +459,7 @@ export default async function MaterialPage({
           value={lastPurchase.error ? "—" : last ? fmtDate(last.movement_date) : "—"}
           icon={CalendarClock}
           tone="teal"
+          delta={last ? { pct: purchaseDelta, label: "önceki alışa göre (USD birim maliyet)", invert: true } : undefined}
           description={
             lastPurchase.error
               ? `Son alış yüklenemedi: ${lastPurchase.error}`
@@ -449,7 +481,7 @@ export default async function MaterialPage({
                 icon={ArrowDownToLine}
                 description="Her alış ayrı bir maliyet hareketi olarak saklanır ve kendi günündeki kurla sabitlenir."
               >
-                <ReceiveForm material={option} units={units} today={today} />
+                <ReceiveForm material={option} units={units} suppliers={suppliers} today={today} />
               </Card>
             </div>
           ) : null}

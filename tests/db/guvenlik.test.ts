@@ -141,14 +141,14 @@ const DEFINER_ALLOWLIST = [
   "is_app_member()",
   "ledger_inconsistencies()",
   "quote_estimate(uuid)",
-  "receive_material(uuid,numeric,text,numeric,text,bigint,date,text,text,uuid)",
+  "receive_material(uuid,numeric,text,numeric,text,bigint,date,uuid,text,uuid)",
   "record_auto_fx_rate(text,text,numeric,date,jsonb)",
   "record_opening_stock(uuid,integer,numeric,text,bigint,date,text,uuid)",
   "record_sale(date,text,bigint,jsonb,uuid,text,uuid)",
   "simulate_production(uuid,integer)",
   "start_production(uuid,integer,bigint,text,uuid)",
   "write_off_material(uuid,numeric,text,text,uuid)",
-  "update_material_purchase(bigint,numeric,text,numeric,text,bigint,date,text,text)",
+  "update_material_purchase(bigint,numeric,text,numeric,text,bigint,date,uuid,text)",
 ].sort();
 
 /** Salt okunur rapor fonksiyonları (SECURITY INVOKER): üye olmayan hiçbir veri görmemeli. */
