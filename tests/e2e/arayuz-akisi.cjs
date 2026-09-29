@@ -71,6 +71,7 @@ async function main() {
 
   step("Malzemeler");
   await page.goto(BASE + "/hammadde");
+  await page.getByRole("button", { name: "Yeni malzeme" }).click(); // form yan panelde
   await page.getByLabel("Malzeme kodu *").fill(`HAM-TEL-${RUN}`);
   await page.getByLabel("Malzeme adı *").fill("Rezistans teli");
   await page.getByLabel("Birim türü *").selectOption("mass");
@@ -87,6 +88,7 @@ async function main() {
   await shot("03-hammadde-tel");
 
   await page.goto(BASE + "/hammadde");
+  await page.getByRole("button", { name: "Yeni malzeme" }).click();
   await page.getByLabel("Malzeme kodu *").fill(`KMP-TERM-${RUN}`);
   await page.getByLabel("Malzeme adı *").fill("Termostat");
   await page.locator("select[name=kind]").selectOption("component");
@@ -104,6 +106,7 @@ async function main() {
 
   step("Ürün ve reçete");
   await page.goto(BASE + "/urunler");
+  await page.getByRole("button", { name: "Yeni ürün" }).click(); // form yan panelde
   await page.getByLabel("Ürün kodu *").fill(`HP-500-${RUN}`);
   await page.getByLabel("Ürün adı *").fill(`Isıtıcı Panel 500 ${RUN}`);
   await page.getByLabel("Varsayılan satış fiyatı").fill("50");
@@ -161,6 +164,7 @@ async function main() {
   await page.getByText("tarihli").first().waitFor();
   await page.getByRole("button", { name: "Üretimi Başlat" }).click();
   await page.waitForURL(/\/uretim\/[0-9a-f-]{36}$/);
+  await page.getByRole("button", { name: "İptal et", exact: true }).click(); // iptal formu pencerede
   await page.getByLabel("İptal gerekçesi").fill("Test iptali");
   await page.getByRole("button", { name: "Partiyi iptal et" }).click();
   await expectText("Parti iptal edildi");
@@ -172,6 +176,7 @@ async function main() {
 
   step("Heatemp → Mekonsis teslimat: 80");
   await page.goto(BASE + "/rafim");
+  await page.getByRole("button", { name: "Yeni teslimat" }).click(); // teslimat formu yan panelde
   await selectByText(page.locator("select[name=variant_id]").first(), RUN);
   await page.getByLabel(/Adet \* \(en fazla/).fill("80");
   await page.getByRole("button", { name: "Mekonsis'e teslim et" }).click();
@@ -206,6 +211,7 @@ async function main() {
 
   step("Müşteri + teklif + satışa dönüştür");
   await page.goto(BASE + "/musteriler");
+  await page.getByRole("button", { name: "Müşteri ekle" }).click(); // form yan panelde
   await page.getByLabel("Firma adı *").fill(`Örnek Yapı A.Ş. ${RUN}`);
   await page.getByLabel("Yetkili kişi").fill("Ayşe Yılmaz");
   await page.getByRole("button", { name: "Müşteriyi ekle" }).click();
@@ -235,6 +241,9 @@ async function main() {
   await shot("20-uretim-liste");
   await page.goto(BASE + "/satislar");
   await shot("21-satislar");
+  await page.goto(BASE + "/teslimatlar");
+  await page.getByRole("heading", { level: 1, name: /Teslimatlar/ }).waitFor();
+  await shot("22-teslimatlar");
 
   console.log(errors.length ? "Sayfa hataları:\n" + errors.join("\n") : "Sayfa hatası yok.");
   await browser.close();

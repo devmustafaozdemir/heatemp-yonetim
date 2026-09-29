@@ -26,10 +26,12 @@ export class FxSourceError extends Error {
   }
 }
 
-export function tcmbUrl(date: string | null): string {
-  if (!date) return "https://www.tcmb.gov.tr/kurlar/today.xml";
+export const TCMB_BASE_URL = "https://www.tcmb.gov.tr/kurlar";
+
+export function tcmbUrl(date: string | null, base = TCMB_BASE_URL): string {
+  if (!date) return `${base}/today.xml`;
   const [y, m, d] = date.split("-");
-  return `https://www.tcmb.gov.tr/kurlar/${y}${m}/${d}${m}${y}.xml`;
+  return `${base}/${y}${m}/${d}${m}${y}.xml`;
 }
 
 export function parseTcmbXml(xml: string, rateType: TcmbRateType): FetchedRate {
@@ -98,16 +100,21 @@ function previousDay(date: string, days = 1): string {
 export async function fetchTcmb(
   date: string | null,
   rateType: TcmbRateType,
-  { fetcher = fetch, timeoutMs = 5000, lookbackDays = 7 }: { fetcher?: Fetcher; timeoutMs?: number; lookbackDays?: number } = {},
+  {
+    fetcher = fetch,
+    timeoutMs = 5000,
+    lookbackDays = 7,
+    baseUrl = TCMB_BASE_URL,
+  }: { fetcher?: Fetcher; timeoutMs?: number; lookbackDays?: number; baseUrl?: string } = {},
 ): Promise<FetchedRate> {
   if (!date) {
-    return parseTcmbXml(await fetchText(fetcher, tcmbUrl(null), timeoutMs), rateType);
+    return parseTcmbXml(await fetchText(fetcher, tcmbUrl(null, baseUrl), timeoutMs), rateType);
   }
   let lastError: unknown = null;
   for (let i = 0; i <= lookbackDays; i++) {
     const day = previousDay(date, i);
     try {
-      return parseTcmbXml(await fetchText(fetcher, tcmbUrl(day), timeoutMs), rateType);
+      return parseTcmbXml(await fetchText(fetcher, tcmbUrl(day, baseUrl), timeoutMs), rateType);
     } catch (err) {
       lastError = err;
       if (!(err instanceof FxSourceError && err.notPublished)) throw err;

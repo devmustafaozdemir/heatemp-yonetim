@@ -3,6 +3,23 @@
 import { adminAction, unwrap } from "@/lib/action";
 import type { FormReader } from "@/lib/form";
 
+const DUPLICATE_NAME = "Bu isimde bir müşteri zaten kayıtlı.";
+
+/** Firma adı benzersizlik ihlali (customers_name_unique, büyük/küçük harf duyarsız). */
+function isDuplicateName(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: string; message?: string; details?: string | null };
+  return e.code === "23505" && `${e.message ?? ""} ${e.details ?? ""}`.includes("customers_name_unique");
+}
+
+/** Aynı adlı müşteri hatasını formun genelinde değil "Firma adı" alanının yanında gösterir. */
+function flagDuplicateName(form: FormReader, error: unknown) {
+  if (isDuplicateName(error)) {
+    form.errors.name = DUPLICATE_NAME;
+    form.assertValid();
+  }
+}
+
 function readCustomer(form: FormReader) {
   const email = form.text("email", "E-posta", { max: 200 });
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) form.errors.email = "Geçerli bir e-posta adresi girin.";
@@ -21,7 +38,9 @@ export async function createCustomer(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {
     const values = readCustomer(form);
     form.assertValid();
-    const c = unwrap(await ctx.supabase.from("customers").insert(values).select("id").single());
+    const res = await ctx.supabase.from("customers").insert(values).select("id").single();
+    flagDuplicateName(form, res.error);
+    const c = unwrap(res);
     return { message: "Müşteri eklendi.", redirectTo: `/musteriler/${c.id}` };
   });
 }
@@ -31,7 +50,9 @@ export async function updateCustomer(formData: FormData) {
     const id = form.id("id", "Müşteri");
     const values = { ...readCustomer(form), is_active: form.bool("is_active") };
     form.assertValid();
-    unwrap(await ctx.supabase.from("customers").update(values).eq("id", id!).select("id").single());
+    const res = await ctx.supabase.from("customers").update(values).eq("id", id!).select("id").single();
+    flagDuplicateName(form, res.error);
+    unwrap(res);
     return { message: "Müşteri güncellendi." };
   });
 }

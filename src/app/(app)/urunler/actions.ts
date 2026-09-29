@@ -61,8 +61,11 @@ export async function deleteProduct(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {
     const id = form.id("id", "Ürün");
     form.assertValid();
+    const old = unwrap(await ctx.supabase.from("products").select("image_path").eq("id", id!).single());
     unwrap(await ctx.supabase.from("product_variants").delete().eq("product_id", id!));
     unwrap(await ctx.supabase.from("products").delete().eq("id", id!));
+    // Silinen ürünün görseli kovada sahipsiz kalmasın.
+    if (old?.image_path) await ctx.supabase.storage.from("product-images").remove([old.image_path]);
     return { message: "Ürün silindi.", redirectTo: "/urunler" };
   });
 }

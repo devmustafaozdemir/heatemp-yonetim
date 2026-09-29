@@ -21,11 +21,13 @@ export function BomLineFields({ materials, units }: { materials: BomMaterialOpti
   const selectedUnit = options.some((o) => o.code === unit) ? unit : (material?.display_unit ?? "");
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr_1fr_2fr]">
-      <FormField name="material_id" label="Malzeme *">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
+      <FormField name="material_id" label="Malzeme" required>
         <select
           className="input"
           name="material_id"
+          required
+          aria-required
           value={materialId}
           onChange={(e) => {
             setMaterialId(e.target.value);
@@ -40,10 +42,10 @@ export function BomLineFields({ materials, units }: { materials: BomMaterialOpti
           ))}
         </select>
       </FormField>
-      <FormField name="entry_qty" label="1 adet için miktar *">
-        <input className="input" name="entry_qty" inputMode="decimal" />
+      <FormField name="entry_qty" label="1 adet için miktar" required>
+        <input className="input" name="entry_qty" inputMode="decimal" required aria-required />
       </FormField>
-      <FormField name="entry_unit" label="Birim *">
+      <FormField name="entry_unit" label="Birim" required hint={material ? undefined : "Önce malzeme seçin"}>
         <select
           className="input"
           name="entry_unit"
@@ -59,7 +61,7 @@ export function BomLineFields({ materials, units }: { materials: BomMaterialOpti
         </select>
       </FormField>
       <FormField name="note" label="Not">
-        <input className="input" name="note" maxLength={500} />
+        <input className="input" name="note" maxLength={500} placeholder="İsteğe bağlı" />
       </FormField>
     </div>
   );

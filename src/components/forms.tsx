@@ -1,9 +1,11 @@
 "use client";
 
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createContext, use, useRef, useState, useTransition, type ReactNode } from "react";
+import { createContext, use, useEffect, useId, useRef, useState, useTransition, type ComponentProps, type ReactNode } from "react";
 import { notifySuccess } from "@/components/Toaster";
-import { Alert, Button, cx } from "@/components/ui";
+import { Alert, Button, cx, RequiredMark, type ButtonVariant } from "@/components/ui";
+import { useDialog } from "@/components/ui/dialog";
 import { initialActionState, type ActionState } from "@/lib/form";
 
 export type ServerAction = (formData: FormData) => Promise<ActionState>;
@@ -27,6 +29,8 @@ export function ActionForm({
   resetOnSuccess = false,
   showSuccess = true,
   onSuccess,
+  closeDialogOnSuccess = true,
+  showErrorMessage = true,
 }: {
   action: ServerAction;
   children: ReactNode | ((state: { pending: boolean; result: ActionState }) => ReactNode);
@@ -35,8 +39,13 @@ export function ActionForm({
   resetOnSuccess?: boolean;
   showSuccess?: boolean;
   onSuccess?: (result: ActionState) => void;
+  /** Modal/yan panel içindeyse başarıdan sonra kapat (varsayılan). */
+  closeDialogOnSuccess?: boolean;
+  /** false: genel hata mesajını formun altında gösterme (children fonksiyonunda result.message ile kendiniz yerleştirin). */
+  showErrorMessage?: boolean;
 }) {
   const router = useRouter();
+  const dialog = useDialog();
   const formRef = useRef<HTMLFormElement>(null);
   const [requestId, setRequestId] = useState(newRequestId);
   const [result, setResult] = useState<ActionState>(initialActionState);
@@ -62,6 +71,7 @@ export function ActionForm({
         setRequestId(newRequestId());
         if (resetOnSuccess) formRef.current?.reset();
         onSuccess?.(next);
+        if (closeDialogOnSuccess) dialog?.close();
         if (next.redirectTo) router.push(next.redirectTo);
       }
     });
@@ -73,7 +83,7 @@ export function ActionForm({
       <FormState value={{ pending, fieldErrors: result.fieldErrors ?? {} }}>
         {typeof children === "function" ? children({ pending, result }) : children}
       </FormState>
-      {result.message && !result.ok ? (
+      {showErrorMessage && result.message && !result.ok ? (
         <div className="mt-3">
           <Alert tone="error">{result.message}</Alert>
         </div>
@@ -86,13 +96,7 @@ const FormStateContext = createContext<{ pending: boolean; fieldErrors: Record<s
   pending: false,
   fieldErrors: {},
 });
-function FormState({
-  value,
-  children,
-}: {
-  value: { pending: boolean; fieldErrors: Record<string, string> };
-  children: ReactNode;
-}) {
+function FormState({ value, children }: { value: { pending: boolean; fieldErrors: Record<string, string> }; children: ReactNode }) {
   return <FormStateContext value={value}>{children}</FormStateContext>;
 }
 
@@ -106,7 +110,12 @@ export function useFormPending(): boolean {
 
 export function FieldError({ name }: { name: string }) {
   const error = useFieldError(name);
-  return error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null;
+  return error ? (
+    <span className="field-error" role="alert">
+      <AlertCircle className="size-3.5" aria-hidden />
+      {error}
+    </span>
+  ) : null;
 }
 
 export function FormField({
@@ -115,22 +124,57 @@ export function FormField({
   hint,
   children,
   className,
+  required,
 }: {
   name: string;
   label: ReactNode;
   hint?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Etikette zorunlu alan işareti (*) gösterir. */
+  required?: boolean;
 }) {
   const error = useFieldError(name);
+  const descId = `${useId()}-aciklama`;
+  const described = error || hint ? descId : null;
+  const labelRef = useRef<HTMLLabelElement>(null);
+  // İpucu/hata girdiye aria-describedby ile bağlanır. Öznitelikler hidrasyondan sonra DOM'a yazılır:
+  // sunucudan gelen çocuk öğeyi klonlamak sunucu/istemci farkına (hidrasyon uyuşmazlığı) yol açıyordu.
+  useEffect(() => {
+    const el = labelRef.current?.querySelector<HTMLElement>("input, select, textarea");
+    if (!el) return;
+    if (described) el.setAttribute("aria-describedby", described);
+    else el.removeAttribute("aria-describedby");
+    if (error) el.setAttribute("aria-invalid", "true");
+    else el.removeAttribute("aria-invalid");
+    if (required) el.setAttribute("aria-required", "true");
+  }, [described, error, required]);
   return (
-    <label className={cx("block", className)}>
-      <span className="label">{label}</span>
-      {children}
-      {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
-      {!error && hint ? <span className="mt-1 block text-xs text-slate-500">{hint}</span> : null}
-    </label>
+    <div className={cx("block min-w-0", className)} data-invalid={error ? "" : undefined}>
+      <label ref={labelRef} className="block">
+        <span className="label">
+          {label}
+          {required ? <RequiredMark /> : null}
+        </span>
+        {children}
+      </label>
+      {error ? (
+        <span id={descId} className="field-error" role="alert">
+          <AlertCircle className="size-3.5" aria-hidden />
+          {error}
+        </span>
+      ) : hint ? (
+        <span id={descId} className="help">
+          {hint}
+        </span>
+      ) : null}
+    </div>
   );
+}
+
+/** Form işlem çubuğu: yan panel/modal içinde altta yapışık, sayfada sağa hizalı. */
+export function FormActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx("form-actions", className)}>{children}</div>;
 }
 
 export function SubmitButton({
@@ -139,18 +183,26 @@ export function SubmitButton({
   variant = "primary",
   size = "md",
   disabled,
+  ...rest
 }: {
   children: ReactNode;
   pending?: boolean;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: ButtonVariant;
   size?: "sm" | "md";
   disabled?: boolean;
-}) {
+} & Omit<ComponentProps<"button">, "type" | "children" | "disabled">) {
   const pendingCtx = useFormPending();
   const pending = pendingProp ?? pendingCtx;
   return (
-    <Button type="submit" variant={variant} size={size} disabled={pending || disabled} aria-busy={pending}>
-      {pending ? "İşleniyor…" : children}
+    <Button {...rest} type="submit" variant={variant} size={size} disabled={pending || disabled} aria-busy={pending}>
+      {pending ? (
+        <>
+          <Loader2 className="animate-spin" aria-hidden />
+          Kaydediliyor…
+        </>
+      ) : (
+        children
+      )}
     </Button>
   );
 }

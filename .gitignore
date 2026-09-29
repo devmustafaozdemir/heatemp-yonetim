@@ -49,3 +49,6 @@ next-env.d.ts
 # Supabase CLI yerel dosyaları
 supabase/.branches
 supabase/.temp
+
+# Excel aktarım paketi çıktıları (gerçek ticari veri içerir)
+/import/

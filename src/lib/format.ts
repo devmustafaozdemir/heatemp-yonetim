@@ -124,3 +124,56 @@ export function todayTr(): string {
   }).format(new Date());
   return parts;
 }
+
+/** Grafik eksenleri ve kartlar için kısa tutar: ₺905 bin, ₺1,2 mn, $12,5 bin. */
+export function fmtCompactMoney(value: Num, currency: Currency | string = "TRY"): string {
+  const n = toNumber(value);
+  if (n === null) return "—";
+  const symbol = SYMBOL[currency as Currency] ?? `${currency} `;
+  const sign = n < 0 ? "−" : "";
+  const a = Math.abs(n);
+  if (a >= 1_000_000) return `${sign}${symbol}${nf(0, 1).format(a / 1_000_000)} mn`;
+  if (a >= 10_000) return `${sign}${symbol}${nf(0, 0).format(a / 1_000)} bin`;
+  if (a >= 1_000) return `${sign}${symbol}${nf(0, 1).format(a / 1_000)} bin`;
+  return `${sign}${symbol}${nf(0, 0).format(a)}`;
+}
+
+/**
+ * Önceki döneme göre yüzde değişim. Önceki değer 0 veya bilinmiyorsa null döner
+ * (yüzde uydurulmaz).
+ */
+export function pctChange(current: Num, previous: Num): number | null {
+  const c = toNumber(current);
+  const p = toNumber(previous);
+  if (c === null || p === null || p === 0) return null;
+  return ((c - p) / Math.abs(p)) * 100;
+}
+
+/** Sabit ondalıklı yüzde (marj, pay): "%72,3". Tablolarda yan yana aynı hane sayısı için. */
+export function fmtPercent(value: Num, digits = 1): string {
+  const n = toNumber(value);
+  if (n === null) return "—";
+  return `%${n < 0 ? "−" : ""}${nf(digits, digits).format(Math.abs(n))}`;
+}
+
+/** Grafik ekseni için kısa gün: "29.09" (tooltip'te fmtDate kullanın). */
+export function fmtDayShort(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}.${m}`;
+}
+
+/**
+ * Eksen için "güzel" adımlar (1, 2, 2,5, 5 × 10^n): 0/85/170 yerine 0/100/200.
+ * Döner: { ticks, max } — YAxis domain=[0, max] ve ticks olarak verin.
+ */
+export function niceTicks(maxValue: number, count = 4, minValue = 0): { ticks: number[]; min: number; max: number } {
+  const span = Math.max(maxValue - minValue, Math.abs(maxValue) * 0.001, 1e-9);
+  const raw = span / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
+  const min = Math.floor(minValue / step) * step;
+  const max = Math.ceil(maxValue / step) * step || step;
+  const ticks: number[] = [];
+  for (let t = min; t <= max + step / 2; t += step) ticks.push(Number(t.toFixed(10)));
+  return { ticks, min, max };
+}

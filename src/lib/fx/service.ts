@@ -120,7 +120,9 @@ export async function refreshFx(ctx: AuthContext, date: string | null, { force =
  * Sayfa yüklenirken çağrılır: son otomatik kontrol ayarlanan süreden eskiyse
  * bugünün kurunu yanıt gönderildikten SONRA almayı planlar (sayfayı bekletmez).
  */
-export async function ensureFreshFx(ctx: AuthContext): Promise<{ suggestion: FxSuggestion | null; warning: string | null }> {
+export async function ensureFreshFx(
+  ctx: AuthContext,
+): Promise<{ suggestion: FxSuggestion | null; warning: string | null; error: string | null }> {
   let warning: string | null = null;
   try {
     const settings = await getFxSettings(ctx);
@@ -147,8 +149,13 @@ export async function ensureFreshFx(ctx: AuthContext): Promise<{ suggestion: FxS
   } catch (err) {
     warning = err instanceof Error ? err.message : String(err);
   }
-  const suggestion = await suggestFx(ctx, null).catch(() => null);
-  return { suggestion, warning };
+  // Kur sorgusu hatası "kur yok" ile karıştırılmaz: ayrı bir hata olarak döner.
+  let error: string | null = null;
+  const suggestion = await suggestFx(ctx, null).catch((err: unknown) => {
+    error = err instanceof Error ? err.message : String(err);
+    return null;
+  });
+  return { suggestion, warning, error };
 }
 
 /** İşlem tarihi için kur: önce veritabanı, geçerli değilse o tarih için servisten dener. */
