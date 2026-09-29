@@ -3,9 +3,10 @@
 -- Tedarikçi kartı; hammadde alışında tedarikçi listeden seçilir (supplier_id).
 -- material_movements.supplier metni tedarikçi adının kopyasıdır (arama/gösterim);
 -- tedarikçi adı değişince kopyalar da güncellenir. Eski serbest metinler karta dönüştürülür.
+-- Tekrar çalıştırılabilir (if not exists / drop if exists); veri silmez.
 -- =====================================================================
 
-create table public.suppliers (
+create table if not exists public.suppliers (
   id uuid primary key default gen_random_uuid(),
   name text not null check (btrim(name) <> ''),
   tax_number text,
@@ -19,12 +20,17 @@ create table public.suppliers (
   updated_at timestamptz not null default now()
 );
 
-create unique index suppliers_name_unique on public.suppliers (lower(btrim(name)));
+create unique index if not exists suppliers_name_unique on public.suppliers (lower(btrim(name)));
 
+drop trigger if exists suppliers_updated_at on public.suppliers;
 create trigger suppliers_updated_at before update on public.suppliers
   for each row execute function private.set_updated_at();
 
 alter table public.suppliers enable row level security;
+drop policy if exists suppliers_select on public.suppliers;
+drop policy if exists suppliers_insert on public.suppliers;
+drop policy if exists suppliers_update on public.suppliers;
+drop policy if exists suppliers_delete on public.suppliers;
 create policy suppliers_select on public.suppliers for select to authenticated
   using ((select public.is_app_member()));
 create policy suppliers_insert on public.suppliers for insert to authenticated
@@ -66,6 +72,7 @@ begin
 end
 $$;
 
+drop trigger if exists suppliers_sync_name on public.suppliers;
 create trigger suppliers_sync_name after update of name on public.suppliers
   for each row when (old.name is distinct from new.name) execute function private.sync_supplier_name();
 
@@ -292,7 +299,9 @@ comment on function public.update_material_purchase(bigint, numeric, text, numer
 -- ---------------------------------------------------------------------
 -- Tedarikçi listesi: alış sayısı ve ödenen tutar (alış günü kuruyla TL; USD bilgi)
 -- ---------------------------------------------------------------------
-create or replace view public.v_supplier_list with (security_invoker = true) as
+-- Sonraki migration sütun ekleyebildiği için yeniden çalıştırmada önce kaldırılır (yalnız görünüm; veri yok).
+drop view if exists public.v_supplier_list;
+create view public.v_supplier_list with (security_invoker = true) as
 select s.*,
        coalesce(a.purchase_count, 0) as purchase_count,
        coalesce(a.material_count, 0) as material_count,
