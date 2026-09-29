@@ -609,3 +609,51 @@ describe("Tutarlılık", () => {
     expect(Number(k.revenue_try)).toBeCloseTo(Number(s.r), 4);
   });
 });
+
+describe("Hammadde alışı düzeltme / iptal", () => {
+  it("alışı ters kayıtla kapatıp düzeltilmiş alışı açar; defter ve ortalama maliyet tutarlı kalır", async () => {
+    const f = await setupProduct(admin);
+    const wrong = await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
+    const newId = await rpc<number>(f.admin, "correct_material_purchase", {
+      p_movement_id: wrong,
+      p_reason: "Fiyat yanlış girildi",
+      p_qty: 20,
+      p_unit: "kg",
+      p_unit_price: 12,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+    });
+    expect(Number(newId)).toBeGreaterThan(Number(wrong));
+    const [tel] = await sql("select * from public.v_materials where id = $1", [f.materials[0].id]);
+    expect(Number(tel.qty)).toBe(20000);
+    expect(Number(tel.value_usd)).toBeCloseTo(240, 4);
+    const rev = await sql("select * from public.material_movements where reverses_movement_id = $1", [wrong]);
+    expect(rev).toHaveLength(1);
+    expect(Number(rev[0].qty)).toBe(-30000);
+    // aynı alış ikinci kez düzeltilemez
+    await expectError(
+      rpc(f.admin, "correct_material_purchase", { p_movement_id: wrong, p_reason: "tekrar" }),
+      /daha önce düzeltilmiş/,
+    );
+    expect(await query(f.admin, "select * from public.ledger_inconsistencies()")).toEqual([]);
+  });
+
+  it("alıştan sonra üretimde kullanılan malzemenin alışı düzeltilemez; iptal yalnız gerekçeyle", async () => {
+    const f = await setupProduct(admin);
+    const tel = await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
+    await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
+    await expectError(rpc(f.admin, "correct_material_purchase", { p_movement_id: tel, p_reason: " " }), /gerekçesi/);
+    await produce(f, 10);
+    await expectError(
+      rpc(f.admin, "correct_material_purchase", { p_movement_id: tel, p_reason: "iptal" }),
+      /üretimde kullanıldı veya fire yazıldı/,
+    );
+  });
+
+  it("görüntüleyici alış düzeltemez", async () => {
+    const f = await setupProduct(admin);
+    const viewer = await createUser("viewer");
+    const tel = await receive(f.admin, f.materials[0].id, 5, "kg", 10, "USD", f.fxId);
+    await expectError(rpc(viewer, "correct_material_purchase", { p_movement_id: tel, p_reason: "x" }), /yönetici yetkisi/);
+  });
+});
