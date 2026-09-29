@@ -119,7 +119,7 @@ export default async function DeliveriesPage({ searchParams }: { searchParams: P
   ]);
 
   // Sayfa numarası sonuç sayısını aşarsa (eski yer imi, filtre sonrası azalan sonuç) ilk sayfaya dön.
-  if (res.error && lp.page > 1 && /range not satisfiable/i.test(res.error)) redirect(hrefWith(BASE, values, { sayfa: null }));
+  if (res.error && lp.page > 1 && /range not satisfiable|sonuçların dışında/i.test(res.error)) redirect(hrefWith(BASE, values, { sayfa: null }));
 
   // Özet
   const days = daily.data ?? [];

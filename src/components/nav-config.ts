@@ -16,6 +16,8 @@ import {
 export interface NavLeaf {
   href: string;
   label: string;
+  /** Yalnız yöneticiye gösterilir (yazma işlemi sayfaları) */
+  adminOnly?: boolean;
 }
 export interface NavItem {
   label: string;
@@ -61,7 +63,7 @@ export const NAV: NavGroup[] = [
         icon: Receipt,
         children: [
           { href: "/satislar", label: "Satış listesi" },
-          { href: "/satislar/yeni", label: "Yeni satış" },
+          { href: "/satislar/yeni", label: "Yeni satış", adminOnly: true },
         ],
       },
       { label: "Kurumsal Müşteriler", icon: Building2, href: "/musteriler" },
@@ -96,6 +98,15 @@ function allTrails(): Trail[] {
 
 function matches(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** Role göre görünür menü (görüntüleyici yazma sayfalarını görmez). */
+export function navFor(role: "admin" | "viewer"): NavGroup[] {
+  if (role === "admin") return NAV;
+  return NAV.map((g) => ({
+    ...g,
+    items: g.items.map((i) => (i.children ? { ...i, children: i.children.filter((c) => !c.adminOnly) } : i)),
+  }));
 }
 
 /** Yol için en uzun eşleşen menü öğesi (ör. /satislar/yeni → "Yeni satış", /satislar/SAT-1 → "Satış listesi"). */

@@ -13,11 +13,22 @@ export function fxSourceLabel(source: string, rateType?: string) {
 }
 
 /** Üst bardaki kur göstergesi: kur, kaynak, kurun tarihi ve geçerlilik açıkça gösterilir. */
-export function FxBadge({ suggestion, warning }: { suggestion: FxSuggestion | null; warning: string | null }) {
+export function FxBadge({
+  suggestion,
+  warning,
+  error = null,
+}: {
+  suggestion: FxSuggestion | null;
+  warning: string | null;
+  /** Kur sorgusu başarısız olduysa (kur "yok" değil, okunamadı) */
+  error?: string | null;
+}) {
   const valid = suggestion?.is_valid ?? false;
   const title = suggestion
     ? `USD/TRY ${fmtRate(suggestion.rate)} — ${fxSourceLabel(suggestion.source, suggestion.rate_type)}, kur tarihi ${fmtDate(suggestion.rate_date)}${warning ? ` · ${warning}` : ""}`
-    : (warning ?? "Kur yok");
+    : error
+      ? `Kur okunamadı: ${error}`
+      : (warning ?? "Kur yok");
   return (
     <Link
       href="/ayarlar#kur"
@@ -45,9 +56,13 @@ export function FxBadge({ suggestion, warning }: { suggestion: FxSuggestion | nu
             {fxSourceLabel(suggestion.source, suggestion.rate_type)} · {fmtDate(suggestion.rate_date)}
             {!valid ? " · güncel değil" : ""}
           </span>
+          <span className="block truncate text-[10.5px] text-ink-muted md:hidden">
+            {SOURCE_LABEL[suggestion.source] ?? suggestion.source} · {fmtDate(suggestion.rate_date).slice(0, 5)}
+            {!valid ? " · eski" : ""}
+          </span>
         </span>
       ) : (
-        <span className="font-semibold whitespace-nowrap">Kur yok — manuel kur girin</span>
+        <span className="font-semibold whitespace-nowrap">{error ? "Kur okunamadı" : "Kur yok — manuel kur girin"}</span>
       )}
     </Link>
   );

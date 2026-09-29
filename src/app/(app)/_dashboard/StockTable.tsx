@@ -76,7 +76,7 @@ export function StockTable({
       id="urun-durumu"
       title="Ürün durumu"
       icon={Package}
-      description="Varyant bazında üretim, raf stokları (Heatemp, Mekonsis) ve satış; tüm miktarlar adet. Durum, toplam kalanın varyant eşiklerine göre hesaplanır."
+      description="Güncel durum: varyant bazında raf stokları ve tüm zamanlar üretim/satış adetleri (dönem seçimi bu tabloyu etkilemez). Durum, toplam kalanın varyant eşiklerine göre hesaplanır."
       padded={false}
       className="scroll-mt-20"
       footer={
@@ -211,7 +211,7 @@ export function StockTable({
                         title="Mekonsis rafındaki stok (adet) — Heatemp'in varlığı"
                         {...th}
                       />
-                      <SortTh label="Satılan" column="sold_qty" align="right" title="Gerçekleşmiş satışlar" {...th} />
+                      <SortTh label="Satılan" column="sold_qty" align="right" title="Gerçekleşmiş satışlar (tüm zamanlar; dönem seçiminden bağımsız)" {...th} />
                       <SortTh label="Kalan" column="total_remaining" align="right" title="Toplam kalan: Heatemp + Mekonsis rafı" {...th} />
                       <th>Durum</th>
                       <th

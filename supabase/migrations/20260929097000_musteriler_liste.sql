@@ -45,10 +45,10 @@ s as (
     count(*) filter (where s.status = 'completed')::integer as sale_count,
     count(*) filter (where s.status = 'cancelled')::integer as cancelled_sale_count,
     coalesce(sum(s.total_quantity) filter (where s.status = 'completed'), 0)::integer as sold_qty,
-    coalesce(round(sum(s.revenue_try) filter (where s.status = 'completed'), 2), 0) as revenue_try,
-    coalesce(round(sum(s.revenue_usd) filter (where s.status = 'completed'), 2), 0) as revenue_usd,
-    coalesce(round(sum(s.cogs_try) filter (where s.status = 'completed'), 2), 0) as cogs_try,
-    coalesce(round(sum(s.gross_profit_try) filter (where s.status = 'completed'), 2), 0) as gross_profit_try,
+    coalesce(round(sum(s.revenue_try) filter (where s.status = 'completed'), 4), 0) as revenue_try,
+    coalesce(round(sum(s.revenue_usd) filter (where s.status = 'completed'), 4), 0) as revenue_usd,
+    coalesce(round(sum(s.cogs_try) filter (where s.status = 'completed'), 4), 0) as cogs_try,
+    coalesce(round(sum(s.gross_profit_try) filter (where s.status = 'completed'), 4), 0) as gross_profit_try,
     min(s.sold_on) filter (where s.status = 'completed') as first_sold_on,
     max(s.sold_on) filter (where s.status = 'completed') as last_sold_on
   from public.sales s
@@ -122,9 +122,9 @@ as $$
   agg as (
     select
       date_trunc('month', s.sold_on)::date as month,
-      round(coalesce(sum(s.revenue_try) filter (where s.customer_id is not null), 0), 2) as customer_revenue_try,
-      round(coalesce(sum(s.revenue_try) filter (where s.customer_id is null), 0), 2) as other_revenue_try,
-      round(coalesce(sum(s.gross_profit_try) filter (where s.customer_id is not null), 0), 2) as customer_profit_try,
+      round(coalesce(sum(s.revenue_try) filter (where s.customer_id is not null), 0), 4) as customer_revenue_try,
+      round(coalesce(sum(s.revenue_try) filter (where s.customer_id is null), 0), 4) as other_revenue_try,
+      round(coalesce(sum(s.gross_profit_try) filter (where s.customer_id is not null), 0), 4) as customer_profit_try,
       count(*) filter (where s.customer_id is not null)::integer as customer_sale_count,
       count(*) filter (where s.customer_id is null)::integer as other_sale_count
     from s
@@ -158,9 +158,9 @@ as $$
     ),
     'totals', (
       select jsonb_build_object(
-        'revenue_try', coalesce(round(sum(s.revenue_try), 2), 0),
-        'customer_revenue_try', coalesce(round(sum(s.revenue_try) filter (where s.customer_id is not null), 2), 0),
-        'customer_profit_try', coalesce(round(sum(s.gross_profit_try) filter (where s.customer_id is not null), 2), 0),
+        'revenue_try', coalesce(round(sum(s.revenue_try), 4), 0),
+        'customer_revenue_try', coalesce(round(sum(s.revenue_try) filter (where s.customer_id is not null), 4), 0),
+        'customer_profit_try', coalesce(round(sum(s.gross_profit_try) filter (where s.customer_id is not null), 4), 0),
         'sale_count', count(*),
         'customer_sale_count', count(*) filter (where s.customer_id is not null)
       )
@@ -168,8 +168,8 @@ as $$
     ),
     'period', (
       select jsonb_build_object(
-        'customer_revenue_try', coalesce(round(sum(s.revenue_try) filter (where s.customer_id is not null), 2), 0),
-        'other_revenue_try', coalesce(round(sum(s.revenue_try) filter (where s.customer_id is null), 2), 0),
+        'customer_revenue_try', coalesce(round(sum(s.revenue_try) filter (where s.customer_id is not null), 4), 0),
+        'other_revenue_try', coalesce(round(sum(s.revenue_try) filter (where s.customer_id is null), 4), 0),
         'customer_sale_count', count(*) filter (where s.customer_id is not null),
         'other_sale_count', count(*) filter (where s.customer_id is null)
       )
@@ -225,8 +225,8 @@ as $$
       date_trunc('month', s.sold_on)::date as month,
       count(*)::integer as sale_count,
       sum(s.total_quantity)::integer as quantity,
-      round(sum(s.revenue_try), 2) as revenue_try,
-      round(sum(s.gross_profit_try), 2) as gross_profit_try
+      round(sum(s.revenue_try), 4) as revenue_try,
+      round(sum(s.gross_profit_try), 4) as gross_profit_try
     from s
     group by 1
   ),
@@ -240,8 +240,8 @@ as $$
       select jsonb_build_object(
         'sale_count', count(*),
         'quantity', coalesce(sum(s.total_quantity), 0),
-        'revenue_try', coalesce(round(sum(s.revenue_try), 2), 0),
-        'gross_profit_try', coalesce(round(sum(s.gross_profit_try), 2), 0)
+        'revenue_try', coalesce(round(sum(s.revenue_try), 4), 0),
+        'gross_profit_try', coalesce(round(sum(s.gross_profit_try), 4), 0)
       )
       from s, bounds b
       where s.sold_on >= b.first_month
@@ -266,8 +266,8 @@ as $$
             l.display_name,
             count(distinct l.sale_id)::integer as sale_count,
             sum(l.quantity)::integer as quantity,
-            round(sum(l.revenue_try), 2) as revenue_try,
-            round(sum(l.gross_profit_try), 2) as gross_profit_try
+            round(sum(l.revenue_try), 4) as revenue_try,
+            round(sum(l.gross_profit_try), 4) as gross_profit_try
           from lines l
           group by l.variant_id, l.product_id, l.display_name
           order by sum(l.revenue_try) desc, l.display_name

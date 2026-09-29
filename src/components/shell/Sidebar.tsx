@@ -4,14 +4,22 @@ import { ChevronDown, Thermometer } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { NAV, activeTrail, type NavItem } from "@/components/nav-config";
+import { activeTrail, navFor, type NavItem } from "@/components/nav-config";
 import { cx } from "@/components/ui";
 
 /**
  * Koyu lacivert sol menü. Masaüstünde daraltılabilir (yalnız ikonlar; üzerine gelince
  * alt menü açılır), mobil/tablette AppShell tarafından kayar panel olarak gösterilir.
  */
-export function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+export function Sidebar({
+  collapsed,
+  onNavigate,
+  role = "admin",
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+  role?: "admin" | "viewer";
+}) {
   const pathname = usePathname();
   const trail = activeTrail(pathname);
 
@@ -35,7 +43,7 @@ export function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavig
       </Link>
 
       <nav aria-label="Ana menü" className={cx("flex-1 py-3", collapsed ? "overflow-visible px-2" : "overflow-y-auto px-3")}>
-        {NAV.map((group) => (
+        {navFor(role).map((group) => (
           <div key={group.title} className="mb-2">
             {collapsed ? (
               <div className="mx-auto my-2 h-px w-6 bg-white/10" aria-hidden />

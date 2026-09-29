@@ -18,7 +18,9 @@ export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
   const { data, error } = await supabase.auth.getClaims();
   const sub = data?.claims?.sub;
   if (error || !sub) return null;
-  const { data: appUser } = await supabase.from("app_users").select("role").eq("user_id", sub).maybeSingle();
+  const { data: appUser, error: roleError } = await supabase.from("app_users").select("role").eq("user_id", sub).maybeSingle();
+  // Rol okunamadıysa "yetkisiz" sayfasına göndermek yanıltıcı olur: hata olarak yükselt.
+  if (roleError) throw new Error(`Kullanıcı yetkisi okunamadı: ${roleError.message}`);
   return {
     supabase,
     userId: sub,

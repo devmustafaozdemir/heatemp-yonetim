@@ -17,6 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <>
       <AppShell
         initialCollapsed={collapsed}
+        role={ctx.role}
         notice={
           ctx.role === "viewer" ? (
             <span className="hidden items-center gap-1.5 rounded-md bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800 md:inline-flex">
@@ -27,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         }
         topbarEnd={
           <>
-            <FxBadge suggestion={fx.suggestion} warning={fx.warning} />
+            <FxBadge suggestion={fx.suggestion} warning={fx.warning} error={fx.error} />
             <UserMenu email={ctx.email} role={ctx.role} signOut={signOut} />
           </>
         }

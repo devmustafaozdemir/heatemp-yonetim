@@ -15,11 +15,13 @@ export const SIDEBAR_COOKIE = "hm_menu";
  */
 export function AppShell({
   initialCollapsed,
+  role = "admin",
   topbarEnd,
   notice,
   children,
 }: {
   initialCollapsed: boolean;
+  role?: "admin" | "viewer";
   topbarEnd: ReactNode;
   notice?: ReactNode;
   children: ReactNode;
@@ -64,7 +66,7 @@ export function AppShell({
           collapsed ? "w-[70px]" : "w-[250px]",
         )}
       >
-        <Sidebar collapsed={collapsed} />
+        <Sidebar collapsed={collapsed} role={role} />
       </aside>
 
       {/* Mobil/tablet menü */}
@@ -82,7 +84,7 @@ export function AppShell({
             mobileOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
-          <Sidebar collapsed={false} onNavigate={() => setMobileOpen(false)} />
+          <Sidebar collapsed={false} role={role} onNavigate={() => setMobileOpen(false)} />
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
