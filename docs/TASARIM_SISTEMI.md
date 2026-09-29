@@ -154,3 +154,34 @@ Dönem seçimi: `lib/period.ts` (`resolvePeriod`, `buckets`).
 - Durumlar renk + ikon + metinle verilir. Odak halkası görünür (`:focus-visible`).
 - Hedef genişlikler: 1440 px masaüstü, 768 px tablet, 390 px mobil. Sayfa yatay kaymaz; geniş tablolar
   `TableWrap` içinde kayar. Kart başlığındaki işlemler dar ekranda alta sarar.
+
+## Biçim ve dil sözlüğü (tüm ekranlarda aynı)
+
+| Konu | Kural |
+|---|---|
+| Para birimi etiketi | Sütun/başlıkta "(TL)" ve "(USD)"; değerde `fmtMoney` (₺1.234,56 / $12,50). "(₺)" yazmayın. |
+| Tutar | Her yerde 2 ondalık (`fmtMoney`); özet kartlarında da kuruşlu. Kısaltma (`fmtCompactMoney`) yalnız grafik ekseni ve halka ortasında. |
+| Birim fiyat/maliyet | `fmtUnitMoney` (2–4 ondalık) + birim: "₺400,00 / kg". |
+| Yüzde (marj, pay, değişim) | `fmtPercent(v)` — sabit 1 ondalık: "%72,3", "%90,0". |
+| Adet | `fmtInt` + "adet" birimi (kartlarda `unit="adet"`). |
+| Tarih | Metinde `fmtDate` (29.09.2026), zamanlı `fmtDateTime`; grafik ekseninde gün `fmtDayShort` (29.09), ay `fmtMonth` (Eyl 2026). |
+| Ürün/varyant | "Ürün adı — Varyant" (uzun tire, boşluklu). Kod ayrıca `.code` ile. |
+| Müşterisiz satış | "Müşteri belirtilmemiş". |
+| Buton metni | Cümle düzeni: "Satış ekle", "Hammadde girişi", "Üretimi başlat". |
+| Başlık | Sayfa başlığı menü etiketiyle aynı; detayda kayıt numarası (SAT-…, PRT-…, TES-…, TKL-…) önek almadan başlıkta, tür breadcrumb'da. |
+| Silme/iptal | Geri alınamaz işlem düğmesi `variant="danger"`; pencereyi açan düğme `secondary` + ikon. |
+| Durum filtresi | Birincil durum filtresi sayaçlı `LinkTabs` (liste kartının üstünde); ikincil filtreler `ListToolbar`. |
+| Kart başlığı | Başlıklı her kartta ilgili lucide ikonu (`Card icon={…}`). |
+| Satır işlemleri | Masaüstünde ikon + kısa metin (Detay, Giriş, Teslim et); dar ekranda yalnız ikon + `aria-label`. |
+| Boş durum | Her zaman `EmptyState` (kart içinde `compact`). |
+| Dar ekran listeleri | `md` altında kart listesi (önemli değerler görünür), üstünde tablo; önemli sütunlar kaydırma arkasında kalmaz. |
+| Yan panel | Formlar `size="md"` (576 px); işlem düğmeleri `FormActions` ile altta yapışık. |
+| Stok durumu | `StockStatusBadge`/`displayStockStatus`: hiç stok girişi olmayan varyant "Stok girişi yok" (gri); sayımlarda "Kritik"ten ayrı tutulur. |
+
+### Grafik kuralları
+
+- Lejant: `ChartLegend`, grafiğin **üstünde**, sola hizalı; nokta (sütun/alan), çizgi (çizgi grafik), kesikli (hedef).
+- Seçim düğmeleri (`Segmented`): kart başlığının sağında (`Card actions`).
+- Renkler anlama göre `SERIES` (ciro mavi, kâr teal, maliyet amber, adet violet, Heatemp lacivert, Mekonsis teal, hammadde sky, açılış gri).
+- Y ekseni: `niceTicks` ile yuvarlak adımlar; para ekseni `fmtCompactMoney`.
+- Tooltip: `TooltipBox`, tam adlar ve birimler; kesilen eksen etiketlerinin tam hali tooltip'te.
