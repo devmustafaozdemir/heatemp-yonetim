@@ -43,13 +43,15 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         .range(lp.from, lp.to)
         .returns<SupplierListRow[]>(),
     ),
-    load(ctx.supabase.from("v_supplier_list").select("is_active, purchase_count, total_try, total_usd").returns<SupplierListRow[]>()),
+    load(ctx.supabase.from("v_supplier_list").select("is_active, purchase_count, total_try, total_usd, vat_try").returns<SupplierListRow[]>()),
   ]);
   redirectIfOutOfRange(res, lp, BASE);
 
   const rows = res.data ?? [];
   const summary = all.data ?? [];
-  const totalTry = summary.reduce((s, x) => s + Number(x.total_try), 0);
+  const netTry = summary.reduce((s, x) => s + Number(x.total_try), 0);
+  const vatTry = summary.reduce((s, x) => s + Number(x.vat_try ?? 0), 0);
+  const totalTry = netTry + vatTry;
   const totalUsd = summary.reduce((s, x) => s + Number(x.total_usd), 0);
   const purchases = summary.reduce((s, x) => s + Number(x.purchase_count), 0);
   const activeCount = summary.filter((x) => x.is_active).length;
@@ -102,7 +104,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
           value={fmtMoney(totalTry, "TRY")}
           icon={Wallet}
           tone="amber"
-          description={`Tüm hammadde alışları · alış günü kuruyla · USD karşılığı ${fmtMoney(totalUsd, "USD")}`}
+          description={`KDV dahil · KDV ${fmtMoney(vatTry, "TRY")} · KDV hariç USD ${fmtMoney(totalUsd, "USD")}`}
           error={all.error}
         />
         <StatCard
@@ -149,7 +151,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                     <SortTh label="Tedarikçi" column="name" {...sortProps} />
                     <th>Yetkili ve iletişim</th>
                     <SortTh label="Alış" column="purchase_count" align="right" title="Stok girişi sayısı" {...sortProps} />
-                    <SortTh label="Toplam ödenen (₺)" column="total_try" align="right" title="Alış günü kuruyla TL" {...sortProps} />
+                    <SortTh label="Toplam ödenen (₺)" column="total_try" align="right" title="KDV dahil, alış günü kuruyla TL" {...sortProps} />
                     <SortTh label="Son alış" column="last_purchase_date" {...sortProps} />
                     {isAdmin ? <th aria-label="İşlemler" /> : null}
                   </tr>
@@ -179,8 +181,8 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                         <div className="text-xs text-ink-muted">{fmtInt(x.material_count)} malzeme</div>
                       </td>
                       <td className="num">
-                        <span className="font-semibold text-ink">{fmtMoney(x.total_try, "TRY")}</span>
-                        <div className="text-xs text-ink-muted">{fmtMoney(x.total_usd, "USD")}</div>
+                        <span className="font-semibold text-ink">{fmtMoney(Number(x.total_try) + Number(x.vat_try ?? 0), "TRY")}</span>
+                        <div className="text-xs text-ink-muted">KDV {fmtMoney(x.vat_try ?? 0, "TRY")}</div>
                       </td>
                       <td className="whitespace-nowrap tabular-nums">
                         {x.last_purchase_date ? fmtDate(x.last_purchase_date) : <span className="text-xs text-ink-muted">Alış yok</span>}
@@ -212,7 +214,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                   <dl className="mt-3 grid grid-cols-3 gap-x-3 text-[13px]">
                     <div className="min-w-0">
                       <dt className="text-xs text-ink-muted">Toplam ödenen</dt>
-                      <dd className="font-semibold text-ink tabular-nums">{fmtMoney(x.total_try, "TRY")}</dd>
+                      <dd className="font-semibold text-ink tabular-nums">{fmtMoney(Number(x.total_try) + Number(x.vat_try ?? 0), "TRY")}</dd>
                     </div>
                     <div className="min-w-0">
                       <dt className="text-xs text-ink-muted">Alış</dt>

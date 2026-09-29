@@ -14,7 +14,7 @@ const KIND_LABEL: Record<UnitKind, string> = {
 };
 
 /** Malzeme tanım alanları (yeni malzeme ve düzenleme). */
-export function MaterialFields({ units, material }: { units: Unit[]; material?: MaterialView }) {
+export function MaterialFields({ units, material, vatRate }: { units: Unit[]; material?: MaterialView; vatRate?: number }) {
   const [kind, setKind] = useState<UnitKind>(material?.unit_kind ?? "count");
   const options = units.filter((u) => u.kind === kind);
   return (
@@ -95,6 +95,17 @@ export function MaterialFields({ units, material }: { units: Unit[]; material?: 
 
       <FormSection title="Diğer">
         <div className="grid gap-3">
+          <FormField name="vat_rate" label="KDV oranı" hint="Stok girişinde önerilen oran; alışta değiştirilebilir. KDV maliyete eklenmez.">
+            <select className="input" name="vat_rate" defaultValue={String(vatRate ?? 20)}>
+              {[...new Set([0, 1, 10, 20, vatRate ?? 20])]
+                .sort((a, b) => a - b)
+                .map((r) => (
+                  <option key={r} value={r}>
+                    %{r}
+                  </option>
+                ))}
+            </select>
+          </FormField>
           <FormField name="notes" label="Not" hint="Tedarik, özellik veya depolama bilgisi (isteğe bağlı)">
             <textarea className="input min-h-[4.5rem]" name="notes" rows={2} defaultValue={material?.notes ?? ""} maxLength={1000} />
           </FormField>

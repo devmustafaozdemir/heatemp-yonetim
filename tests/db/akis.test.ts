@@ -643,6 +643,42 @@ describe("Tedarikçiler", () => {
   });
 });
 
+describe("Alış KDV'si ve stok seyri", () => {
+  it("KDV oranı malzemeden gelir, tutar hesaplanır veya elle girilir; KDV maliyete girmez", async () => {
+    const f = await setupProduct(admin);
+    const a = await rpc<number>(f.admin, "receive_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 10,
+      p_unit: "kg",
+      p_unit_price: 5,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+    });
+    const b = await rpc<number>(f.admin, "receive_material", {
+      p_material_id: f.materials[0].id,
+      p_qty: 10,
+      p_unit: "kg",
+      p_unit_price: 5,
+      p_currency: "USD",
+      p_fx_rate_id: f.fxId,
+      p_vat_rate: 10,
+      p_vat_amount: 4.99,
+    });
+    const rows = await sql("select id, vat_rate, vat_amount, value_usd from public.material_movements where id = any($1) order by id", [[a, b]]);
+    expect(Number(rows[0].vat_rate)).toBe(20);
+    expect(Number(rows[0].vat_amount)).toBeCloseTo(10, 4);
+    expect(Number(rows[1].vat_rate)).toBe(10);
+    expect(Number(rows[1].vat_amount)).toBeCloseTo(4.99, 4);
+    expect(Number(rows[0].value_usd)).toBeCloseTo(50, 4);
+
+    const flows = await query(f.admin, "select * from public.material_flows($1, 'gun', null)", [f.materials[0].id]);
+    expect(flows).toHaveLength(1);
+    expect(Number(flows[0].in_qty)).toBe(20000);
+    const years = await query(f.admin, "select * from public.material_flows($1, 'yil', null)", [f.materials[0].id]);
+    expect(String(years[0].bucket).slice(5, 10) === "01-01" || new Date(years[0].bucket).getMonth() === 0).toBe(true);
+  });
+});
+
 describe("Hammadde alışı düzenleme / hareket silme", () => {
   it("alışı yerinde günceller; ters kayıt eklenmez, sonraki bakiyeler ve defter tutarlı kalır", async () => {
     const f = await setupProduct(admin);

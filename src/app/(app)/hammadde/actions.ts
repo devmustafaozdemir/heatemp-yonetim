@@ -14,6 +14,7 @@ export async function createMaterial(formData: FormData) {
       unit_kind: form.oneOf("unit_kind", "Birim türü", UNIT_KINDS),
       display_unit: form.text("display_unit", "Gösterim birimi", { required: true }),
       notes: form.text("notes", "Not", { max: 1000 }),
+      vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }) ?? 20,
     };
     form.assertValid();
     const m = unwrap(await ctx.supabase.from("raw_materials").insert(values).select("id").single());
@@ -30,6 +31,7 @@ export async function updateMaterial(formData: FormData) {
       kind: form.oneOf("kind", "Tür", ["raw", "component"] as const, "raw"),
       display_unit: form.text("display_unit", "Gösterim birimi", { required: true }),
       notes: form.text("notes", "Not", { max: 1000 }),
+      vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }) ?? 20,
       is_active: form.bool("is_active"),
     };
     form.assertValid();
@@ -49,6 +51,8 @@ export async function receiveMaterial(formData: FormData) {
       p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
       p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
       p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
+      p_vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }),
+      p_vat_amount: form.decimal("vat_amount", "KDV tutarı", { min: 0 }),
       p_note: form.text("note", "Not", { max: 500 }),
       p_request_id: form.requestId(),
     };
@@ -73,6 +77,8 @@ export async function correctPurchase(formData: FormData) {
       p_fx_rate_id: form.bigintId("fx_rate_id", "İşlem kuru"),
       p_received_on: form.date("received_on", "Alış tarihi", { required: true }),
       p_supplier_id: form.id("supplier_id", "Tedarikçi", { required: false }),
+      p_vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }),
+      p_vat_amount: form.decimal("vat_amount", "KDV tutarı", { min: 0 }),
       p_note: form.text("note", "Not", { max: 500 }),
     };
     if (!args.p_fx_rate_id) {

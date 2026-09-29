@@ -141,14 +141,14 @@ const DEFINER_ALLOWLIST = [
   "is_app_member()",
   "ledger_inconsistencies()",
   "quote_estimate(uuid)",
-  "receive_material(uuid,numeric,text,numeric,text,bigint,date,uuid,text,uuid)",
+  "receive_material(uuid,numeric,text,numeric,text,bigint,date,uuid,text,uuid,numeric,numeric)",
   "record_auto_fx_rate(text,text,numeric,date,jsonb)",
   "record_opening_stock(uuid,integer,numeric,text,bigint,date,text,uuid)",
   "record_sale(date,text,bigint,jsonb,uuid,text,uuid)",
   "simulate_production(uuid,integer)",
   "start_production(uuid,integer,bigint,text,uuid)",
   "write_off_material(uuid,numeric,text,text,uuid)",
-  "update_material_purchase(bigint,numeric,text,numeric,text,bigint,date,uuid,text)",
+  "update_material_purchase(bigint,numeric,text,numeric,text,bigint,date,uuid,text,numeric,numeric)",
 ].sort();
 
 /** Salt okunur rapor fonksiyonları (SECURITY INVOKER): üye olmayan hiçbir veri görmemeli. */
@@ -157,6 +157,7 @@ const READ_RPCS: Record<string, string> = {
   customers_overview: "select public.customers_overview(12) as r",
   delivery_by_variant: "select * from public.delivery_by_variant(current_date - 400, current_date, null)",
   delivery_daily_summary: "select * from public.delivery_daily_summary(current_date - 400, current_date, null)",
+  material_flows: "select * from public.material_flows((select id from public.raw_materials limit 1), 'gun', null)",
   material_monthly_flows: "select * from public.material_monthly_flows(null, null)",
   production_by_variant: "select * from public.production_by_variant(current_date - 400, current_date)",
   production_monthly: "select * from public.production_monthly(null)",

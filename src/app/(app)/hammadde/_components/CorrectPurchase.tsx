@@ -10,6 +10,7 @@ import { fmtMoney, fmtNum } from "@/lib/format";
 import type { SupplierOption, Unit } from "@/lib/types";
 import { correctPurchase, deleteMovement } from "../actions";
 import { SupplierSelect } from "./SupplierSelect";
+import { VatFields } from "./VatFields";
 
 export interface CorrectablePurchase {
   id: number;
@@ -21,6 +22,8 @@ export interface CorrectablePurchase {
   total_amount: number | null;
   supplier_id: string | null;
   note: string | null;
+  vat_rate: number | null;
+  vat_amount: number | null;
 }
 
 const trDate = (iso: string) => iso.split("-").reverse().join(".");
@@ -31,12 +34,15 @@ export function CorrectPurchase({
   units,
   suppliers,
   today,
+  defaultVatRate = 20,
   compact = false,
 }: {
   movement: CorrectablePurchase;
   units: Unit[];
   suppliers: SupplierOption[];
   today: string;
+  /** Malzemenin KDV oranı (kayıtta oran yoksa) */
+  defaultVatRate?: number;
   /** Tabloda yalnız ikonlu düğme */
   compact?: boolean;
 }) {
@@ -96,6 +102,15 @@ export function CorrectPurchase({
             </span>
             {movement.total_amount ? <> (önceki: {fmtMoney(movement.total_amount, movement.currency ?? "USD")})</> : null}
           </p>
+        </FormSection>
+
+        <FormSection title="KDV">
+          <VatFields
+            total={Number.isFinite(total) && total > 0 ? total : null}
+            currency={currency}
+            defaultRate={movement.vat_rate ?? defaultVatRate}
+            initialAmount={movement.vat_amount}
+          />
         </FormSection>
 
         <FormSection title="Tarih ve kur">

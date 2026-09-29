@@ -88,7 +88,7 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
     tableQuery = tableQuery.order(sortKey, { ascending: lp.dir === "asc", nullsFirst: false });
   }
 
-  const [res, all, flows, units, supplierRes] = await Promise.all([
+  const [res, all, flows, units, supplierRes, vatRes] = await Promise.all([
     loadPage(tableQuery.order("name", { ascending: true }).order("code", { ascending: true }).range(lp.from, lp.to).returns<MaterialListRow[]>()),
     // Özet kartları ve grafikler: filtreden bağımsız, tüm malzemeler (güncel stok)
     load(ctx.supabase.from("v_material_list").select("*", { count: "exact" }).order("name").returns<MaterialListRow[]>()),
@@ -96,16 +96,28 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
     load(ctx.supabase.from("units").select("*").order("sort_order").returns<Unit[]>()),
     // Tedarikçi seçimi ve "tedarikçilere ödenen tutar" grafiği aynı görünümden
     load(ctx.supabase.from("v_supplier_list").select("*").order("total_try", { ascending: false }).returns<SupplierListRow[]>()),
+    load(ctx.supabase.from("raw_materials").select("id, vat_rate").returns<{ id: string; vat_rate: number }[]>()),
   ]);
+  const vatRates = new Map((vatRes.data ?? []).map((r) => [r.id, Number(r.vat_rate)]));
+  const withVat = (m: MaterialListRow) => ({ ...toOption(m), vat_rate: vatRates.get(m.id) ?? 20 });
   const supplierRows = supplierRes.data ?? [];
   const suppliers: SupplierOption[] = supplierRows
     .map((x) => ({ id: x.id, name: x.name, is_active: x.is_active }))
     .sort((a, b) => a.name.localeCompare(b.name, "tr"));
   const supplierSpend = supplierRows
-    .filter((x) => Number(x.total_try) > 0)
-    .slice(0, 10)
-    .map((x) => ({ key: x.id, label: x.name, value: Number(x.total_try), usd: Number(x.total_usd), count: Number(x.purchase_count) }));
-  const supplierTotalTry = supplierRows.reduce((sum, x) => sum + Number(x.total_try), 0);
+    .map((x) => ({
+      key: x.id,
+      label: x.name,
+      value: Number(x.total_try) + Number(x.vat_try ?? 0),
+      vat: Number(x.vat_try ?? 0),
+      usd: Number(x.total_usd),
+      count: Number(x.purchase_count),
+    }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+  const supplierTotalTry = supplierRows.reduce((sum, x) => sum + Number(x.total_try) + Number(x.vat_try ?? 0), 0);
+  const supplierVatTry = supplierRows.reduce((sum, x) => sum + Number(x.vat_try ?? 0), 0);
 
   // Eski / paylaşılmış bağlantıda sayfa numarası sonuç sayısını aşıyorsa son geçerli sayfaya git.
   if (res.outOfRange) {
@@ -164,12 +176,14 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
   );
 
   const allUnits = units.data ?? [];
-  const receiveOptions = active.map(toOption);
+  const receiveOptions = active.map(withVat);
   const rows = res.data ?? [];
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath: BASE, values };
   const filtered = Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k));
   const rowAction = (m: MaterialListRow) =>
-    isAdmin && m.is_active ? <RowReceiveDrawer m={m} units={allUnits} unitsError={units.error} suppliers={suppliers} today={today} /> : null;
+    isAdmin && m.is_active ? (
+      <RowReceiveDrawer m={m} vatRate={vatRates.get(m.id) ?? 20} units={allUnits} unitsError={units.error} suppliers={suppliers} today={today} />
+    ) : null;
 
   const attentionTitle = critical.length > 0 ? "Dikkat gerektirenler" : "Reçete stok kapsamı";
   const attentionDescription =
@@ -412,7 +426,7 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
             className="mb-4"
             title="Tedarikçilere ödenen tutar"
             icon={Handshake}
-            description="Tüm zamanlar · hammadde alışları · TL (alış günü kuruyla) · ilk 10 tedarikçi"
+            description="Tüm zamanlar · hammadde alışları · KDV dahil TL (alış günü kuruyla) · ilk 10 tedarikçi"
             actions={
               <Link href="/tedarikciler" className="link text-xs">
                 Tedarikçiler
@@ -430,8 +444,8 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
                 <div className="border-t border-line">
                   <MetricRow
                     items={[
-                      { label: "Toplam ödenen", value: fmtMoney(supplierTotalTry, "TRY") },
-                      { label: "Tedarikçi", value: fmtInt(supplierRows.length) },
+                      { label: "Toplam ödenen (KDV dahil)", value: fmtMoney(supplierTotalTry, "TRY") },
+                      { label: "KDV", value: fmtMoney(supplierVatTry, "TRY") },
                       { label: "Alış yapılan", value: fmtInt(supplierRows.filter((x) => Number(x.purchase_count) > 0).length) },
                     ]}
                   />
@@ -694,12 +708,14 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Pr
 /** Satır işlemi: malzemeye sabitli stok girişi penceresi. Birimler yüklenemezse pencere içinde hata gösterilir. */
 function RowReceiveDrawer({
   m,
+  vatRate,
   units,
   unitsError,
   suppliers,
   today,
 }: {
   m: MaterialListRow;
+  vatRate: number;
   units: Unit[];
   unitsError: string | null;
   suppliers: SupplierOption[];
@@ -728,7 +744,7 @@ function RowReceiveDrawer({
           Bu malzemenin birim türünde tanımlı birim yok; alış kaydedilemez.
         </EmptyState>
       ) : (
-        <ReceiveForm material={toOption(m)} units={kindUnits} suppliers={suppliers} today={today} />
+        <ReceiveForm material={{ ...toOption(m), vat_rate: vatRate }} units={kindUnits} suppliers={suppliers} today={today} />
       )}
     </Drawer>
   );

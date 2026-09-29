@@ -96,6 +96,8 @@ export interface MaterialMovement {
   reverses_movement_id?: number | null;
   corrected_at?: string | null;
   supplier_id?: string | null;
+  vat_rate?: number | null;
+  vat_amount?: number | null;
   movement_date: string;
   qty: number;
   value_try: number;
@@ -468,6 +470,8 @@ export interface SupplierListRow extends Supplier {
   total_try: number;
   total_usd: number;
   last_purchase_date: string | null;
+  /** KDV toplamı (TL, alış günü kuruyla) */
+  vat_try: number;
 }
 
 /** Alış formlarındaki tedarikçi seçimi */

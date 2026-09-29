@@ -23,10 +23,10 @@ import { Drawer } from "@/components/ui/dialog";
 import { ListToolbar } from "@/components/ui/ListToolbar";
 import { LinkSegmented, Pagination, SortTh } from "@/components/ui/list";
 import { getAuthContext, requireMember } from "@/lib/auth";
-import { fmtDate, fmtDateTime, fmtInt, fmtMoney, fmtNum, fmtQty, fmtRate, fmtUnitMoney, todayTr } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtInt, fmtMoney, fmtMonth, fmtNum, fmtQty, fmtRate, fmtUnitMoney, todayTr } from "@/lib/format";
 import { hrefWith, isoDateOrNull, parseListParams, searchPattern, type SearchParams } from "@/lib/list-params";
 import { isUuid } from "@/lib/parse";
-import { addDays, buckets } from "@/lib/period";
+import { addDays } from "@/lib/period";
 import { load, must } from "@/lib/query";
 import type { MaterialMovement, SupplierOption, Unit, UnitKind } from "@/lib/types";
 import { updateMaterial } from "../actions";
@@ -132,7 +132,9 @@ export default async function MaterialPage({
     return mq;
   };
 
-  const [units, movements, lastPurchase, flows, bom, supplierRes] = await Promise.all([
+  const grain = flowGrain(values.seyir);
+  const grainBuckets = flowBuckets(grain, today);
+  const [units, movements, lastPurchase, flows, bom, supplierRes, grainFlows, vatRes] = await Promise.all([
     must(ctx.supabase.from("units").select("*").eq("kind", material.unit_kind).order("sort_order").returns<Unit[]>(), "Birimler"),
     loadPage(
       movementQuery("*")
@@ -163,7 +165,12 @@ export default async function MaterialPage({
         .returns<BomUse[]>(),
     ),
     load(ctx.supabase.from("suppliers").select("id, name, is_active").order("name").returns<SupplierOption[]>()),
+    load<{ bucket: string; in_qty: number; out_qty: number }[]>(
+      ctx.supabase.rpc("material_flows", { p_material_id: id, p_grain: grain, p_from: grainBuckets[0].key }),
+    ),
+    load(ctx.supabase.from("raw_materials").select("vat_rate").eq("id", id).maybeSingle<{ vat_rate: number }>()),
   ]);
+  const vatRate = vatRes.data ? Number(vatRes.data.vat_rate) : 20;
   const suppliers = supplierRes.data ?? [];
 
   // Eski / paylaşılmış bağlantıda sayfa numarası hareket sayısını aşıyorsa son geçerli sayfaya git.
@@ -252,6 +259,7 @@ export default async function MaterialPage({
               units={units}
               suppliers={suppliers}
               today={today}
+              defaultVatRate={vatRate}
               movement={{
                 id: Number(m.id),
                 movement_date: m.movement_date,
@@ -261,6 +269,8 @@ export default async function MaterialPage({
                 currency: m.currency,
                 total_amount: m.total_amount,
                 supplier_id: m.supplier_id ?? null,
+                vat_rate: m.vat_rate ?? null,
+                vat_amount: m.vat_amount ?? null,
                 note: m.note,
               }}
             />
@@ -289,7 +299,7 @@ export default async function MaterialPage({
   const batchLabel = (batchId: string) => batchNo.get(batchId) ?? `Parti ${batchId.slice(0, 8)}`;
 
   const f = Number(material.display_factor);
-  const option = toOption(material);
+  const option = { ...toOption(material), vat_rate: vatRate };
   const unit = material.display_unit;
   const qtyFmt = (baseQty: number) => fmtQty(baseQty, f, unit, 3);
 
@@ -304,33 +314,15 @@ export default async function MaterialPage({
       value: rows.reduce((s, r) => s + Number(r.value_try), 0),
     };
   });
-  const monthFrom = `${addDays(`${today.slice(0, 7)}-15`, -335).slice(0, 7)}-01`;
-  const months = buckets(monthFrom, today, "aylik");
-  const netByMonth = new Map<string, { inQty: number; outQty: number }>();
-  for (const r of flowRows) {
-    const m = r.month_start.slice(0, 7);
-    const cur = netByMonth.get(m) ?? { inQty: 0, outQty: 0 };
-    const q = Number(r.qty);
-    if (q >= 0) cur.inQty += q;
-    else cur.outQty += -q;
-    netByMonth.set(m, cur);
-  }
-  // Ay sonu bakiyesi: güncel stoktan geriye doğru (sonraki ayların net hareketi düşülerek).
+  // Stok seyri: seçilen dönem (gün / hafta / ay / yıl) için giriş, çıkış ve dönem sonu stok.
   const flowPoints: StockFlowPoint[] = [];
+  const netByBucket = new Map((grainFlows.data ?? []).map((r) => [r.bucket, { inQty: Number(r.in_qty), outQty: Number(r.out_qty) }]));
+  // Dönem sonu bakiyesi: güncel stoktan geriye doğru (sonraki dönemlerin net hareketi düşülerek).
   let balanceBase = Number(material.qty);
-  const laterMonths = [...netByMonth.keys()].filter((m) => m > months[months.length - 1]);
-  for (const m of laterMonths) {
-    const n = netByMonth.get(m)!;
-    balanceBase -= n.inQty - n.outQty;
-  }
-  for (let i = months.length - 1; i >= 0; i--) {
-    const n = netByMonth.get(months[i]) ?? { inQty: 0, outQty: 0 };
-    flowPoints.unshift({
-      month: months[i],
-      inQty: n.inQty / f,
-      outQty: n.outQty / f,
-      balance: Math.max(0, balanceBase) / f,
-    });
+  for (let i = grainBuckets.length - 1; i >= 0; i--) {
+    const b = grainBuckets[i];
+    const n = netByBucket.get(b.key) ?? { inQty: 0, outQty: 0 };
+    flowPoints.unshift({ ...b, inQty: n.inQty / f, outQty: n.outQty / f, balance: Math.max(0, balanceBase) / f });
     balanceBase -= n.inQty - n.outQty;
   }
 
@@ -349,7 +341,7 @@ export default async function MaterialPage({
         )
       : null;
   const sortProps = { sort: lp.sort, dir: lp.dir, basePath: base, values };
-  const movementFiltered = Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon"].includes(k));
+  const movementFiltered = Object.keys(values).some((k) => !["sayfa", "adet", "sirala", "yon", "seyir"].includes(k));
 
   return (
     <>
@@ -410,7 +402,7 @@ export default async function MaterialPage({
               >
                 <ActionForm action={updateMaterial}>
                   <input type="hidden" name="id" value={material.id} />
-                  <MaterialFields units={units} material={material} />
+                  <MaterialFields units={units} material={material} vatRate={vatRate} />
                   <div className="mt-5 flex justify-end border-t border-line pt-4">
                     <SubmitButton>Kaydet</SubmitButton>
                   </div>
@@ -485,8 +477,24 @@ export default async function MaterialPage({
               </Card>
             </div>
           ) : null}
-          <Card title="Stok seyri" icon={History} description={`Son 12 ay · aylık giriş, çıkış ve ay sonu stok (${unit})`}>
-            {flows.error ? <ErrorState message={flows.error} compact /> : <StockFlowChart data={flowPoints} unit={unit} />}
+          <Card
+            id="stok-seyri"
+            title="Stok seyri"
+            icon={History}
+            description={`${FLOW_GRAIN[grain].range} · giriş, çıkış ve ${FLOW_GRAIN[grain].end.toLowerCase()} (${unit})`}
+            actions={
+              <LinkSegmented
+                label="Stok seyri dönemi"
+                active={grain}
+                items={FLOW_GRAINS.map((g) => ({ key: g, label: FLOW_GRAIN[g].label, href: `${hrefWith(base, values, { seyir: g === "ay" ? null : g })}#stok-seyri` }))}
+              />
+            }
+          >
+            {grainFlows.error ? (
+              <ErrorState message={grainFlows.error} compact />
+            ) : (
+              <StockFlowChart data={flowPoints} unit={unit} rangeLabel={FLOW_GRAIN[grain].range} endLabel={FLOW_GRAIN[grain].end} />
+            )}
           </Card>
         </div>
 
@@ -638,6 +646,7 @@ export default async function MaterialPage({
           values={values}
           total={movements.error || movements.outOfRange ? null : movements.count}
           noun="hareket"
+          preserveKeys={["seyir"]}
           search={{ placeholder: "Tedarikçi veya not ara…" }}
           filters={[
             {
@@ -727,7 +736,7 @@ export default async function MaterialPage({
                       <div className="mt-1 flex items-baseline justify-between gap-3 text-xs text-ink-muted tabular-nums">
                         <span className="min-w-0">
                           Birim maliyet {fmtUnitMoney(Number(m.unit_cost_try) * f, "TRY")} / {unit} (
-                          {fmtUnitMoney(Number(m.unit_cost_usd) * f, "USD")}) · Bakiye {qtyFmt(Number(m.balance_qty_after))}
+                          {fmtUnitMoney(Number(m.unit_cost_usd) * f, "USD")})
                         </span>
                         <span className="shrink-0 font-medium text-ink-soft">
                           {Number(m.value_try) > 0 ? "+" : ""}
@@ -738,6 +747,7 @@ export default async function MaterialPage({
                         <p className="mt-0.5 text-xs text-ink-muted tabular-nums">
                           {fmtNum(m.entry_qty, 4)} {m.entry_unit} × {fmtUnitMoney(m.unit_price, m.currency!)} ={" "}
                           <span className="font-medium text-ink-soft">{fmtMoney(m.total_amount, m.currency!)}</span>
+                          {m.vat_amount != null ? ` + KDV ${fmtMoney(m.vat_amount, m.currency!)}` : ""}
                           {m.fx_rate ? ` · kur ${fmtRate(m.fx_rate)}` : ""}
                         </p>
                       ) : null}
@@ -775,7 +785,6 @@ export default async function MaterialPage({
                       Birim maliyet
                     </th>
                     <SortTh label="Değer (TL)" column="value_try" align="right" {...sortProps} />
-                    <th className="num">Bakiye</th>
                     <th>Açıklama</th>
                     {correctionReady ? (
                       <th className="w-px">
@@ -817,6 +826,9 @@ export default async function MaterialPage({
                             <>
                               {fmtUnitMoney(m.unit_price, m.currency)} <span className="text-xs text-ink-muted">/ {m.entry_unit}</span>
                               <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>= {fmtMoney(m.total_amount, m.currency)}</div>
+                              {m.vat_amount != null ? (
+                                <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>+ KDV {fmtMoney(m.vat_amount, m.currency)}</div>
+                              ) : null}
                               {m.fx_rate ? <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>kur {fmtRate(m.fx_rate)}</div> : null}
                             </>
                           ) : (
@@ -824,7 +836,14 @@ export default async function MaterialPage({
                           )}
                         </td>
                         <td className={`num ${WIDE_CELL}`}>
-                          {purchase && m.currency ? fmtMoney(m.total_amount, m.currency) : <span className="text-ink-muted">—</span>}
+                          {purchase && m.currency ? (
+                            <>
+                              {fmtMoney(m.total_amount, m.currency)}
+                              {m.vat_amount != null ? <div className="text-xs text-ink-muted">+ KDV {fmtMoney(m.vat_amount, m.currency)}</div> : null}
+                            </>
+                          ) : (
+                            <span className="text-ink-muted">—</span>
+                          )}
                         </td>
                         <td className={`num ${WIDE_CELL}`}>{m.fx_rate ? fmtRate(m.fx_rate) : <span className="text-ink-muted">—</span>}</td>
                         <td className="num">
@@ -837,7 +856,6 @@ export default async function MaterialPage({
                           {Number(m.value_try) > 0 ? "+" : ""}
                           {fmtMoney(m.value_try, "TRY")}
                         </td>
-                        <td className="num">{qtyFmt(Number(m.balance_qty_after))}</td>
                         <td className="max-w-[11rem] text-xs min-[1400px]:max-w-[16rem]">
                           {m.batch_id ? (
                             <Link className="link inline-flex items-center gap-0.5" href={`/uretim/${m.batch_id}`}>
@@ -872,4 +890,51 @@ export default async function MaterialPage({
       </Card>
     </>
   );
+}
+
+type FlowGrain = "gun" | "hafta" | "ay" | "yil";
+const FLOW_GRAINS: FlowGrain[] = ["gun", "hafta", "ay", "yil"];
+const FLOW_GRAIN: Record<FlowGrain, { label: string; range: string; end: string }> = {
+  gun: { label: "Gün", range: "Son 30 gün", end: "Gün sonu stok" },
+  hafta: { label: "Hafta", range: "Son 12 hafta", end: "Hafta sonu stok" },
+  ay: { label: "Ay", range: "Son 12 ay", end: "Ay sonu stok" },
+  yil: { label: "Yıl", range: "Son 5 yıl", end: "Yıl sonu stok" },
+};
+const TR_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+
+function flowGrain(v: string | undefined): FlowGrain {
+  return v === "gun" || v === "hafta" || v === "yil" ? v : "ay";
+}
+
+/** Seçilen dönem için kova başlangıçları (YYYY-AA-GG) ve eksen/tooltip etiketleri; son kova bugünü içerir. */
+function flowBuckets(grain: FlowGrain, today: string): Pick<StockFlowPoint, "key" | "label" | "title">[] {
+  const dm = (iso: string) => `${Number(iso.slice(8, 10))} ${TR_MONTHS[Number(iso.slice(5, 7)) - 1]}`;
+  if (grain === "gun") {
+    return Array.from({ length: 30 }, (_, i) => {
+      const d = addDays(today, i - 29);
+      return { key: d, label: dm(d), title: fmtDate(d) };
+    });
+  }
+  if (grain === "hafta") {
+    const weekday = (new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7; // pazartesi = 0
+    const monday = addDays(today, -weekday);
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = addDays(monday, (i - 11) * 7);
+      return { key: d, label: dm(d), title: `${fmtDate(d)} – ${fmtDate(addDays(d, 6))} haftası` };
+    });
+  }
+  if (grain === "yil") {
+    const y = Number(today.slice(0, 4));
+    return Array.from({ length: 5 }, (_, i) => {
+      const year = y - 4 + i;
+      return { key: `${year}-01-01`, label: String(year), title: String(year) };
+    });
+  }
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  return Array.from({ length: 12 }, (_, i) => {
+    const idx = y * 12 + (m - 1) - 11 + i;
+    const key = `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}-01`;
+    return { key, label: fmtMonth(key), title: fmtMonth(key) };
+  });
 }

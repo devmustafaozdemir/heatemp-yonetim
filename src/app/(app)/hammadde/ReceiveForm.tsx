@@ -10,6 +10,7 @@ import type { FxSuggestion } from "@/lib/fx/service";
 import { parseDecimal } from "@/lib/parse";
 import type { SupplierOption, Unit } from "@/lib/types";
 import { SupplierSelect } from "./_components/SupplierSelect";
+import { VatFields } from "./_components/VatFields";
 import type { MaterialOption } from "./_components/types";
 import { receiveMaterial } from "./actions";
 
@@ -49,6 +50,7 @@ export function ReceiveForm({
   const [fx, setFx] = useState<FxSuggestion | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [note, setNote] = useState("");
+  const [vatKey, setVatKey] = useState(0);
 
   const unitOptions = selected ? units.filter((u) => u.kind === selected.unit_kind) : [];
   const unitInfo = unitOptions.find((u) => u.code === unit) ?? null;
@@ -85,6 +87,7 @@ export function ReceiveForm({
         setPrice("");
         setSupplierId("");
         setNote("");
+        setVatKey((k) => k + 1);
       }}
       className="@container"
     >
@@ -192,6 +195,10 @@ export function ReceiveForm({
               <FieldError name="fx_rate_id" />
             </div>
           </div>
+        </FormSection>
+
+        <FormSection title="KDV" description="KDV maliyete eklenmez; tedarikçiye ödenen tutarda gösterilir.">
+          <VatFields key={`${selected?.id ?? ""}-${vatKey}`} total={total} currency={currency} defaultRate={selected?.vat_rate ?? 20} />
         </FormSection>
 
         <FormSection title="Tedarikçi ve not">
