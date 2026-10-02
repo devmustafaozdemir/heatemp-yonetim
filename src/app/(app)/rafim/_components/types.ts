@@ -40,6 +40,8 @@ export interface ShelfGroup {
   /** En eski katmanın tarihi */
   oldest: string;
   opening_qty: number;
+  /** Satış değeri: kalan adet × satış fiyatı (fiyat tanımsızsa null) */
+  sale?: { amount: number; currency: "USD" | "TRY"; try: number | null } | null;
 }
 
 interface GroupSource {

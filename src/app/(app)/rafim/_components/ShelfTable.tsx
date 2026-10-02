@@ -57,6 +57,24 @@ export function ShelfTable({
       ),
     [groups],
   );
+  // Satış değeri (liste fiyatıyla); sayfa fiyatları yükleyebildiyse sütun gösterilir.
+  const hasSale = groups.some((g) => g.sale !== undefined);
+  const saleTotals = useMemo(
+    () =>
+      groups.reduce(
+        (a, g) =>
+          g.sale
+            ? {
+                usd: a.usd + (g.sale.currency === "USD" ? g.sale.amount : 0),
+                tryOnly: a.tryOnly + (g.sale.currency === "TRY" ? g.sale.amount : 0),
+                try: a.try + (g.sale.try ?? 0),
+                unconverted: a.unconverted || g.sale.try === null,
+              }
+            : a,
+        { usd: 0, tryOnly: 0, try: 0, unconverted: false },
+      ),
+    [groups],
+  );
 
   const visible = useMemo(() => {
     const needle = q.trim().toLocaleLowerCase("tr");
@@ -154,6 +172,11 @@ export function ShelfTable({
                 <th className="num hidden sm:table-cell">{labels.rem}</th>
                 <th className="num hidden xl:table-cell">Birim maliyet (TL)</th>
                 <th className="num">{labels.value}</th>
+                {hasSale ? (
+                  <th className="num hidden lg:table-cell" title="Kalan adet × satış (liste) fiyatı, KDV hariç; USD güncel kurla TL'ye çevrilir">
+                    Satış değeri
+                  </th>
+                ) : null}
                 {showAction ? (
                   <th className="hidden sm:table-cell">
                     <span className="sr-only">İşlem</span>
@@ -228,6 +251,20 @@ export function ShelfTable({
                           <span className="hidden sm:inline">{fmtMoney(g.value_usd, "USD")}</span> · %{shareText}
                         </span>
                       </td>
+                      {hasSale ? (
+                        <td className="num hidden lg:table-cell">
+                          {g.sale ? (
+                            <>
+                              <span className="font-semibold text-ink">{fmtMoney(g.sale.amount, g.sale.currency)}</span>
+                              {g.sale.currency === "USD" && g.sale.try !== null ? (
+                                <span className="block text-[11px] text-ink-muted">≈ {fmtMoney(g.sale.try, "TRY")}</span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-xs text-ink-muted">Fiyat yok</span>
+                          )}
+                        </td>
+                      ) : null}
                       {showAction ? (
                         <td className="hidden text-right whitespace-nowrap sm:table-cell">
                           <Button
@@ -279,6 +316,7 @@ export function ShelfTable({
                                 {fmtUnitMoney(l.unit_cost_try, "TRY")}/adet
                               </span>
                             </td>
+                            {hasSale ? <td className="hidden lg:table-cell" /> : null}
                             {showAction ? <td className="hidden sm:table-cell" /> : null}
                           </tr>
                         ))
@@ -308,6 +346,16 @@ export function ShelfTable({
                     <span className="hidden sm:inline">{fmtMoney(totals.value_usd, "USD")}</span>
                   </span>
                 </td>
+                {hasSale ? (
+                  <td className="num hidden lg:table-cell">
+                    {saleTotals.unconverted ? "—" : fmtMoney(saleTotals.try, "TRY")}
+                    <span className="block text-[11px] font-normal text-ink-muted">
+                      {[saleTotals.usd > 0 ? fmtMoney(saleTotals.usd, "USD") : null, saleTotals.tryOnly > 0 ? fmtMoney(saleTotals.tryOnly, "TRY") : null]
+                        .filter(Boolean)
+                        .join(" + ") || "—"}
+                    </span>
+                  </td>
+                ) : null}
                 {showAction ? <td className="hidden sm:table-cell" /> : null}
               </tr>
             </tfoot>

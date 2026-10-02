@@ -12,6 +12,8 @@ import { AgingTable } from "../rafim/_components/AgingTable";
 import { LocationBanner } from "../rafim/_components/LocationBanner";
 import { SellThroughList, SplitBar } from "../rafim/_components/Bars";
 import { ShelfMovementChart } from "../rafim/_components/ShelfCharts";
+import { SaleValueCard } from "../rafim/_components/SaleValueCard";
+import { withSaleValues } from "../rafim/_components/saleValue";
 import { ShelfTable } from "../rafim/_components/ShelfTable";
 import { daysSince, groupLayers, last12MonthsFrom, toMovementPoints, type MovementRow } from "../rafim/_components/types";
 
@@ -100,6 +102,7 @@ export default async function MekonsisPage() {
       },
     })),
   );
+  const sale = await withSaleValues(ctx, groups);
   const layers = groups.flatMap((g) => g.layers);
   const totalQty = groups.reduce((s, g) => s + g.remaining, 0);
   const totalTry = groups.reduce((s, g) => s + g.value_try, 0);
@@ -165,7 +168,7 @@ export default async function MekonsisPage() {
           <ErrorState message={shelf.error} title="Mekonsis rafı yüklenemedi" />
         </Card>
       ) : (
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-5">
           <StatCard
             label="Raftaki adet"
             scope="Güncel stok"
@@ -183,6 +186,7 @@ export default async function MekonsisPage() {
             tone="blue"
             description={`Heatemp'in varlığı · USD karşılığı ${fmtMoney(totalUsd, "USD")} (parti kurlarıyla, bilgi)`}
           />
+          <SaleValueCard summary={sale.summary} error={sale.error} />
           <StatCard
             label="Satış oranı"
             scope="Bugüne kadar"
@@ -393,7 +397,7 @@ export default async function MekonsisPage() {
               Heatemp rafından teslim edilen ürünler satılana kadar burada görünür.
             </EmptyState>
           ) : (
-            <ShelfTable kind="mekonsis" groups={groups} />
+            <ShelfTable kind="mekonsis" groups={sale.groups} />
           )}
         </Card>
       )}

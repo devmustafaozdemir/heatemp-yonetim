@@ -13,6 +13,8 @@ import { DeliveryDrawer, DeliveryProvider } from "./_components/DeliveryDrawer";
 import { LocationBanner } from "./_components/LocationBanner";
 import { SplitBar } from "./_components/Bars";
 import { ShelfMovementChart } from "./_components/ShelfCharts";
+import { SaleValueCard } from "./_components/SaleValueCard";
+import { withSaleValues } from "./_components/saleValue";
 import { ShelfTable } from "./_components/ShelfTable";
 import { daysSince, groupLayers, last12MonthsFrom, toMovementPoints, type DeliverOption, type MovementRow } from "./_components/types";
 import { OpeningStockForm } from "./OpeningStockForm";
@@ -89,6 +91,8 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
       },
     })),
   );
+
+  const sale = await withSaleValues(ctx, groups);
 
   const mekByVariant = new Map<string, number>();
   let mekQty = 0;
@@ -183,7 +187,7 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
         </Card>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-5">
             <StatCard
               label="Raftaki adet"
               scope="Güncel stok"
@@ -201,6 +205,7 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
               tone="blue"
               description={`USD karşılığı ${fmtMoney(totalUsd, "USD")} · parti kurlarıyla (bilgi)`}
             />
+            <SaleValueCard summary={sale.summary} error={sale.error} />
             <StatCard
               label="Varyant"
               scope="Rafta"
@@ -312,7 +317,7 @@ export default async function HeatempShelfPage({ searchParams }: { searchParams:
                 Tamamlanan üretim partileri ve açılış stoğu burada görünür.
               </EmptyState>
             ) : (
-              <ShelfTable kind="heatemp" groups={groups} canDeliver={isAdmin} initialVariant={varyant} />
+              <ShelfTable kind="heatemp" groups={sale.groups} canDeliver={isAdmin} initialVariant={varyant} />
             )}
           </Card>
         </>
