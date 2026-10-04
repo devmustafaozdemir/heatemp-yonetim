@@ -61,3 +61,18 @@ export async function recordOpeningStock(formData: FormData) {
     return { message: "Açılış stoğu Heatemp rafına eklendi." };
   });
 }
+
+/** Teslimat gününü düzeltir; seçilirse teslim edilen partiler de teslimat gününe çekilir. */
+export async function updateDeliveryDate(formData: FormData) {
+  return adminAction(formData, async (ctx, form) => {
+    const args = {
+      p_delivery_id: form.id("delivery_id", "Teslimat"),
+      p_date: form.date("delivered_on", "Teslimat tarihi", { required: true }),
+      p_move_batches: form.bool("move_batches"),
+    };
+    form.assertValid();
+    unwrap(await ctx.supabase.rpc("update_delivery_date", args));
+    revalidateShelves(args.p_delivery_id);
+    return { message: "Teslimat tarihi güncellendi; raf katmanları ve hareketler de düzeltildi." };
+  });
+}

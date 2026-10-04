@@ -615,6 +615,71 @@ describe("Tutarlılık", () => {
   });
 });
 
+describe("Parti tarih düzeltmesi", () => {
+  it("başlama/tamamlanma geri alınır; raf katmanı, raf hareketi ve tüketim tarihleri birlikte güncellenir", async () => {
+    const f = await setupProduct(admin);
+    await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
+    await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
+    const batch = await produce(f, 10);
+    const today = await todayTr();
+    const startDay = await addDays(today, -5);
+    const doneDay = await addDays(today, -3);
+    const [cost] = await sql("select total_cost_try from public.production_batches where id = $1", [batch]);
+    await rpc(f.admin, "update_batch_dates", {
+      p_batch_id: batch,
+      p_started_at: `${startDay}T08:00:00+03:00`,
+      p_completed_at: `${doneDay}T17:30:00+03:00`,
+    });
+    const [b] = await sql("select started_at, completed_at, actual_minutes, total_cost_try from public.production_batches where id = $1", [batch]);
+    expect(Number(b.actual_minutes)).toBe(2 * 24 * 60 + 9.5 * 60);
+    expect(b.total_cost_try).toBe(cost.total_cost_try);
+    const [layer] = await sql("select received_on::text as d from public.stock_layers where batch_id = $1 and location = 'heatemp'", [batch]);
+    expect(layer.d).toBe(doneDay);
+    const [mv] = await sql("select movement_date::text as d from public.stock_movements where batch_id = $1 and movement_type = 'production_in'", [batch]);
+    expect(mv.d).toBe(doneDay);
+    const cons = await sql("select distinct movement_date::text as d from public.material_movements where batch_id = $1 and movement_type = 'production_consume'", [batch]);
+    expect(cons.map((r) => r.d)).toEqual([startDay]);
+
+    // teslimattan sonraya alınamaz; tamamlanma başlamadan önce olamaz; gelecek olamaz
+    await rpc(f.admin, "deliver_to_mekonsis", { p_variant_id: f.variantId, p_quantity: 2, p_batch_id: batch, p_delivered_on: doneDay });
+    await expectError(
+      rpc(f.admin, "update_batch_dates", { p_batch_id: batch, p_started_at: `${startDay}T08:00:00+03:00`, p_completed_at: `${today}T09:00:00+03:00` }),
+      /teslimat yapıldı/,
+    );
+    await expectError(
+      rpc(f.admin, "update_batch_dates", { p_batch_id: batch, p_started_at: `${doneDay}T18:00:00+03:00`, p_completed_at: `${doneDay}T17:00:00+03:00` }),
+      /başlama zamanından önce/,
+    );
+    const viewer = await createUser("viewer");
+    await expectError(rpc(viewer, "update_batch_dates", { p_batch_id: batch, p_started_at: `${startDay}T08:00:00+03:00` }), /yönetici yetkisi/);
+  });
+});
+
+describe("Teslimat tarih düzeltmesi", () => {
+  it("teslimat geri alınır; parti sonra girdiyse reddedilir, seçenekle parti de teslimat gününe çekilir", async () => {
+    const f = await setupProduct(admin);
+    await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
+    await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
+    const batch = await produce(f, 10);
+    const delivery = await rpc<string>(f.admin, "deliver_to_mekonsis", { p_variant_id: f.variantId, p_quantity: 4, p_batch_id: batch });
+    const today = await todayTr();
+    const day = await addDays(today, -6);
+    await expectError(rpc(f.admin, "update_delivery_date", { p_delivery_id: delivery, p_date: day }), /rafına .* tarihinde girdi/);
+    await rpc(f.admin, "update_delivery_date", { p_delivery_id: delivery, p_date: day, p_move_batches: true });
+    const [d] = await sql("select delivered_on::text as d from public.deliveries where id = $1", [delivery]);
+    expect(d.d).toBe(day);
+    const [ml] = await sql("select received_on::text as d from public.stock_layers where delivery_id = $1", [delivery]);
+    expect(ml.d).toBe(day);
+    const mv = await sql("select distinct movement_date::text as d from public.stock_movements where delivery_id = $1", [delivery]);
+    expect(mv.map((r) => r.d)).toEqual([day]);
+    const [hl] = await sql("select received_on::text as d from public.stock_layers where batch_id = $1 and location = 'heatemp'", [batch]);
+    expect(hl.d).toBe(day);
+    const [b] = await sql("select (completed_at at time zone 'Europe/Istanbul')::date::text as d, completed_at >= started_at as ok from public.production_batches where id = $1", [batch]);
+    expect(b).toEqual({ d: day, ok: true });
+    await expectError(rpc(f.admin, "update_delivery_date", { p_delivery_id: delivery, p_date: await addDays(today, 1) }), /gelecekte/);
+  });
+});
+
 describe("Hammadde silme", () => {
   it("kullanılmamış malzeme hareketleri ve reçetesiyle silinir; üretimde kullanılan silinmez", async () => {
     const f = await setupProduct(admin);
