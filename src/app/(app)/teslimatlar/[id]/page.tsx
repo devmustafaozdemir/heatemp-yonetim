@@ -243,9 +243,10 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
                     <label className="flex items-start gap-2 text-[13px] text-ink-soft">
                       <input type="checkbox" name="move_batches" defaultChecked className="mt-0.5 size-4 accent-brand-600" />
                       <span>
-                        <span className="font-medium text-ink">Partileri de bu güne çek</span>
+                        <span className="font-medium text-ink">Partileri teslimattan 1 gün önceye çek</span>
                         <span className="block text-xs text-ink-muted">
-                          Teslim edilen parti Heatemp rafına bu tarihten sonra girdiyse, partinin tamamlanma günü teslimat gününe alınır (süre korunur).
+                          Teslim edilen parti teslimat günü veya sonrasında bittiyse, tamamlanma günü teslimattan bir önceki güne alınır (saat ve
+                          süre korunur).
                         </span>
                       </span>
                     </label>
