@@ -1,10 +1,11 @@
 "use client";
 
-import { ChevronDown, Thermometer } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { activeTrail, navFor, type NavItem } from "@/components/nav-config";
+import { BrandMark } from "@/components/shell/BrandMark";
 import { cx } from "@/components/ui";
 
 /**
@@ -31,9 +32,7 @@ export function Sidebar({
         className={cx("flex h-14 shrink-0 items-center gap-2.5 border-b border-white/5", collapsed ? "justify-center px-0" : "px-5")}
         aria-label="Heatemp Yönetim — Dashboard"
       >
-        <span className="flex size-8 items-center justify-center rounded-md bg-chart-blue text-white">
-          <Thermometer className="size-4.5" aria-hidden />
-        </span>
+        <BrandMark className="size-9" preload />
         {!collapsed ? (
           <span className="leading-tight">
             <span className="block text-[15px] font-semibold tracking-wide text-white">HEATEMP</span>
