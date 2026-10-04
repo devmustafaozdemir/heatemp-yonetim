@@ -153,6 +153,7 @@ const DEFINER_ALLOWLIST = [
   "delete_raw_material(uuid)",
   "update_batch_dates(uuid,timestamp with time zone,timestamp with time zone)",
   "update_delivery_date(uuid,date,boolean)",
+  "change_material_unit(uuid,text,text)",
 ].sort();
 
 /** Salt okunur rapor fonksiyonları (SECURITY INVOKER): üye olmayan hiçbir veri görmemeli. */

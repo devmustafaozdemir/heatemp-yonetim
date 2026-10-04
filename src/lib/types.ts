@@ -477,6 +477,19 @@ export interface SupplierListRow extends Supplier {
 /** Alış formlarındaki tedarikçi seçimi */
 export type SupplierOption = Pick<Supplier, "id" | "name" | "is_active">;
 
+export interface Mold {
+  id: string;
+  name: string;
+  code: string | null;
+  price: number;
+  currency: "USD" | "TRY";
+  purchased_on: string | null;
+  supplier_id: string | null;
+  product_id: string | null;
+  note: string | null;
+  is_active: boolean;
+}
+
 export interface Customer {
   id: string;
   name: string;

@@ -58,13 +58,16 @@ export function MaterialFields({ units, material, vatRate }: { units: Unit[]; ma
             name="unit_kind"
             label="Birim türü"
             required
-            hint={material ? "Hareketi veya reçetesi olan malzemede değiştirilemez" : "Oluşturduktan sonra değiştirilemez"}
+            hint={
+              material
+                ? "Değiştirirseniz görünen miktarlar aynı kalır (ör. 30 adet → 30 kg); tutarlar korunur, birim maliyet yeni birime göre hesaplanır."
+                : "Sonradan malzeme düzenleme ekranından değiştirilebilir."
+            }
           >
             <select
               className="input"
               name="unit_kind"
               value={kind}
-              disabled={!!material}
               aria-required
               onChange={(e) => setKind(e.target.value as UnitKind)}
             >

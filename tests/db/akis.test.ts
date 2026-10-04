@@ -680,6 +680,39 @@ describe("Teslimat tarih düzeltmesi", () => {
   });
 });
 
+describe("Hammadde birim türü değiştirme", () => {
+  it("hareketli malzemede görünen miktar ve tutar korunur; birim maliyet ve reçete yeni birime dönüşür", async () => {
+    const f = await setupProduct(admin);
+    const tel = f.materials[0];
+    await receive(f.admin, tel.id, 30, "kg", 10, "USD", f.fxId);
+    const [before] = await sql("select qty_display, value_try from public.v_material_list where id = $1", [tel.id]);
+    await rpc(f.admin, "change_material_unit", { p_material_id: tel.id, p_unit_kind: "count", p_display_unit: "adet" });
+    const [after] = await sql("select qty_display, value_try, display_unit, unit_kind from public.v_material_list where id = $1", [tel.id]);
+    expect(after.unit_kind).toBe("count");
+    expect(after.display_unit).toBe("adet");
+    expect(Number(after.qty_display)).toBeCloseTo(Number(before.qty_display), 6);
+    expect(Number(after.value_try)).toBeCloseTo(Number(before.value_try), 6);
+    const [mv] = await sql("select entry_qty, entry_unit, unit_price, total_amount from public.material_movements where material_id = $1", [tel.id]);
+    expect(mv.entry_unit).toBe("adet");
+    expect(Number(mv.entry_qty)).toBeCloseTo(30, 6);
+    expect(Number(mv.unit_price)).toBeCloseTo(10, 6);
+    const [bom] = await sql("select entry_unit from public.bom_items where material_id = $1", [tel.id]);
+    expect(bom.entry_unit).toBe("adet");
+    expect(await query(f.admin, "select * from public.ledger_inconsistencies()")).toEqual([]);
+  });
+});
+
+describe("Kalıplar", () => {
+  it("yönetici kalıp ekler; görüntüleyici ekleyemez ama görür; kod benzersiz", async () => {
+    const viewer = await createUser("viewer");
+    const tag = Math.random().toString(36).slice(2, 8);
+    const [m] = await query(admin, "insert into public.molds (name, code, price, currency) values ($1, $2, 1250, 'USD') returning id", [`Kalıp ${tag}`, `K-${tag}`]);
+    expect(await query(viewer, "select id from public.molds where id = $1", [m.id])).toHaveLength(1);
+    await expectError(query(viewer, "insert into public.molds (name, price) values ('X', 1)"), /row-level security/);
+    await expectError(query(admin, "insert into public.molds (name, code, price) values ('Y', $1, 1)", [`k-${tag}`.toUpperCase()]), /molds_code_unique/);
+  });
+});
+
 describe("Hammadde silme", () => {
   it("kullanılmamış malzeme hareketleri ve reçetesiyle silinir; üretimde kullanılan silinmez", async () => {
     const f = await setupProduct(admin);

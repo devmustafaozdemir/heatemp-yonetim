@@ -80,6 +80,8 @@ type LastPurchase = Pick<
   | "unit_cost_usd"
   | "balance_qty_after"
   | "balance_value_try_after"
+  | "vat_amount"
+  | "vat_rate"
 >;
 type BomUse = {
   id: string;
@@ -135,7 +137,7 @@ export default async function MaterialPage({
 
   const grain = flowGrain(values.seyir);
   const grainBuckets = flowBuckets(grain, today);
-  const [units, movements, lastPurchase, flows, bom, supplierRes, grainFlows, vatRes] = await Promise.all([
+  const [units, movements, lastPurchase, flows, bom, supplierRes, grainFlows, vatRes, allUnitsRes] = await Promise.all([
     must(ctx.supabase.from("units").select("*").eq("kind", material.unit_kind).order("sort_order").returns<Unit[]>(), "Birimler"),
     loadPage(
       movementQuery("*")
@@ -148,7 +150,7 @@ export default async function MaterialPage({
       ctx.supabase
         .from("material_movements")
         .select(
-          "movement_date, entry_qty, entry_unit, unit_price, currency, total_amount, supplier, qty, value_try, unit_cost_try, unit_cost_usd, balance_qty_after, balance_value_try_after",
+          "movement_date, entry_qty, entry_unit, unit_price, currency, total_amount, supplier, qty, value_try, unit_cost_try, unit_cost_usd, balance_qty_after, balance_value_try_after, vat_amount, vat_rate",
         )
         .eq("material_id", id)
         .eq("movement_type", "purchase")
@@ -170,6 +172,8 @@ export default async function MaterialPage({
       ctx.supabase.rpc("material_flows", { p_material_id: id, p_grain: grain, p_from: grainBuckets[0].key }),
     ),
     load(ctx.supabase.from("raw_materials").select("vat_rate").eq("id", id).maybeSingle<{ vat_rate: number }>()),
+    // Düzenlemede birim türü değişebildiği için tüm birimler
+    isAdmin ? load(ctx.supabase.from("units").select("*").order("sort_order").returns<Unit[]>()) : Promise.resolve({ data: [] as Unit[], error: null, count: null }),
   ]);
   const vatRate = vatRes.data ? Number(vatRes.data.vat_rate) : 20;
   const suppliers = supplierRes.data ?? [];
@@ -408,7 +412,7 @@ export default async function MaterialPage({
               >
                 <ActionForm action={updateMaterial}>
                   <input type="hidden" name="id" value={material.id} />
-                  <MaterialFields units={units} material={material} vatRate={vatRate} />
+                  <MaterialFields units={allUnitsRes.data?.length ? allUnitsRes.data : units} material={material} vatRate={vatRate} />
                   <div className="mt-5 flex justify-end border-t border-line pt-4">
                     <SubmitButton>Kaydet</SubmitButton>
                   </div>
@@ -444,7 +448,7 @@ export default async function MaterialPage({
           delta={last ? { pct: avgDelta, label: "son alışla", invert: true } : undefined}
           description={
             material.avg_cost_usd_display !== null
-              ? `${fmtUnitMoney(material.avg_cost_usd_display, "USD")} / ${unit} · hareketli ağırlıklı ortalama`
+              ? `${fmtUnitMoney(material.avg_cost_usd_display, "USD")} / ${unit} · KDV dahil ${fmtUnitMoney(Number(material.avg_cost_try_display) * (1 + vatRate / 100), "TRY")} / ${unit} (%${fmtNum(vatRate, 0)})`
               : "Stok yokken ortalama maliyet hesaplanmaz"
           }
         />
@@ -465,7 +469,7 @@ export default async function MaterialPage({
             lastPurchase.error
               ? `Son alış yüklenemedi: ${lastPurchase.error}`
               : last && last.currency
-                ? `${fmtNum(last.entry_qty, 3)} ${last.entry_unit} × ${fmtUnitMoney(last.unit_price, last.currency)} = ${fmtMoney(last.total_amount, last.currency)}${last.supplier ? ` · ${last.supplier}` : ""}`
+                ? `${fmtNum(last.entry_qty, 3)} ${last.entry_unit} × ${fmtUnitMoney(last.unit_price, last.currency)} = ${fmtMoney(last.total_amount, last.currency)}${last.vat_amount != null ? ` · KDV dahil ${fmtMoney(Number(last.total_amount) + Number(last.vat_amount), last.currency)}` : ""}${last.supplier ? ` · ${last.supplier}` : ""}`
                 : "Henüz alış kaydı yok"
           }
         />
@@ -834,6 +838,11 @@ export default async function MaterialPage({
                           {purchase && m.currency ? (
                             <>
                               {fmtUnitMoney(m.unit_price, m.currency)} <span className="text-xs text-ink-muted">/ {m.entry_unit}</span>
+                              {m.vat_rate != null ? (
+                                <div className="text-xs text-ink-muted">
+                                  KDV dahil {fmtUnitMoney(Number(m.unit_price) * (1 + Number(m.vat_rate) / 100), m.currency)}
+                                </div>
+                              ) : null}
                               <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>= {fmtMoney(m.total_amount, m.currency)}</div>
                               {m.vat_amount != null ? (
                                 <div className={`text-xs text-ink-muted ${NARROW_ONLY}`}>+ KDV {fmtMoney(m.vat_amount, m.currency)}</div>
