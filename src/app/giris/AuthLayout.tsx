@@ -1,5 +1,8 @@
-import { Coins, Factory, Thermometer, TrendingUp, Warehouse, type LucideIcon } from "lucide-react";
+import { Coins, Factory, TrendingUp, Warehouse, type LucideIcon } from "lucide-react";
+import Image from "next/image";
 import type { ReactNode } from "react";
+import logo from "@/assets/brand/heatemp-logo.png";
+import { BrandMark } from "@/components/shell/BrandMark";
 
 const FEATURES: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: Factory, title: "Üretim ve parti maliyeti", text: "Reçeteden üretim simülasyonu, parti başlatma ve gerçekleşen birim maliyet." },
@@ -27,9 +30,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         />
 
         <div className="relative flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-md bg-chart-blue text-white shadow-sm">
-            <Thermometer className="size-5" aria-hidden />
-          </span>
+          <BrandMark className="size-11" />
           <span className="leading-tight">
             <span className="block text-base font-semibold tracking-wide text-white">HEATEMP</span>
             <span className="block text-xs text-nav-title">Üretim · Stok · Satış yönetimi</span>
@@ -67,7 +68,10 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex items-start justify-center px-4 py-8 sm:items-center sm:px-8 sm:py-12">
-        <div className="w-full max-w-[420px]">{children}</div>
+        <div className="w-full max-w-[420px]">
+          <Image src={logo} alt="Heatemp Controls" sizes="288px" preload className="mx-auto mb-6 h-auto w-60 sm:w-72" />
+          {children}
+        </div>
       </div>
     </main>
   );
