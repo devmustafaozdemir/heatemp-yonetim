@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   ArrowDownRight,
   ArrowLeftRight,
   ArrowUpRight,
@@ -53,7 +54,7 @@ import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { BatchConsumption, BatchView } from "@/lib/types";
 import { UnitCostHistory, type CostHistoryPoint } from "../_components/UnitCostHistory";
-import { cancelProduction, completeProduction } from "../actions";
+import { cancelProduction, completeProduction, updateBatchDates } from "../actions";
 import { BatchStatusBadge, CostChange } from "../StatusBadge";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -259,6 +260,42 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
                 <Calculator aria-hidden />
                 Simülasyonu aç
               </ButtonLink>
+            ) : null}
+            {isAdmin && !cancelled ? (
+              <Modal
+                trigger={
+                  <>
+                    <CalendarClock aria-hidden />
+                    Tarihleri düzenle
+                  </>
+                }
+                triggerVariant="secondary"
+                title={`${batch.batch_no} tarihleri`}
+                description="Başlama ve tamamlanma zamanını düzeltin. Rafa giriş günü, raf hareketi ve hammadde tüketim tarihleri birlikte güncellenir; maliyet ve kur değişmez."
+                size="sm"
+              >
+                <ActionForm action={updateBatchDates}>
+                  <input type="hidden" name="batch_id" value={batch.id} />
+                  <div className="grid gap-3">
+                    <FormField name="started_at" label="Başlama zamanı" required>
+                      <input className="input" type="datetime-local" name="started_at" defaultValue={trLocalInput(batch.started_at)} required />
+                    </FormField>
+                    {batch.status === "completed" ? (
+                      <FormField
+                        name="completed_at"
+                        label="Tamamlanma zamanı (rafa giriş)"
+                        required
+                        hint="Partiden teslimat yapıldıysa ilk teslimat gününden sonra olamaz."
+                      >
+                        <input className="input" type="datetime-local" name="completed_at" defaultValue={trLocalInput(batch.completed_at)} required />
+                      </FormField>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 flex justify-end border-t border-line pt-4">
+                    <SubmitButton>Kaydet</SubmitButton>
+                  </div>
+                </ActionForm>
+              </Modal>
             ) : null}
             {isAdmin && inProduction ? (
               <>
@@ -1022,4 +1059,20 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
       ) : null}
     </div>
   );
+}
+
+/** ISO zamanı Türkiye saatinde datetime-local alan değerine çevirir ("YYYY-AA-GGTSS:DD"). */
+function trLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(iso));
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${g("year")}-${g("month")}-${g("day")}T${g("hour")}:${g("minute")}`;
 }

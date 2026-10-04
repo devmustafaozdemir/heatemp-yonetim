@@ -27,6 +27,8 @@ import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { MekonsisShelfRow, SaleAllocationView } from "@/lib/types";
 import { daysSince } from "../../rafim/_components/types";
+import { ActionForm, FormField, SubmitButton } from "@/components/forms";
+import { updateDeliveryDate } from "../../rafim/actions";
 import { CancelDeliveryForm } from "./CancelDeliveryForm";
 
 export const metadata: Metadata = { title: "Teslimat" };
@@ -219,6 +221,41 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
               <Store aria-hidden />
               Mekonsis rafı
             </ButtonLink>
+            {isAdmin && !cancelled ? (
+              <Modal
+                trigger={
+                  <>
+                    <CalendarClock aria-hidden />
+                    Tarihi düzenle
+                  </>
+                }
+                triggerVariant="secondary"
+                title={`${d.delivery_no} teslimat tarihi`}
+                description="Teslimat günü, Mekonsis rafına giriş günü ve raf hareketleri birlikte düzeltilir. Adet ve maliyet değişmez."
+                size="sm"
+              >
+                <ActionForm action={updateDeliveryDate}>
+                  <input type="hidden" name="delivery_id" value={d.id} />
+                  <div className="grid gap-3">
+                    <FormField name="delivered_on" label="Teslimat tarihi" required hint="Teslimattan satış yapıldıysa ilk satış gününden sonra olamaz.">
+                      <input className="input" type="date" name="delivered_on" defaultValue={d.delivered_on} max={todayTr()} required />
+                    </FormField>
+                    <label className="flex items-start gap-2 text-[13px] text-ink-soft">
+                      <input type="checkbox" name="move_batches" defaultChecked className="mt-0.5 size-4 accent-brand-600" />
+                      <span>
+                        <span className="font-medium text-ink">Partileri de bu güne çek</span>
+                        <span className="block text-xs text-ink-muted">
+                          Teslim edilen parti Heatemp rafına bu tarihten sonra girdiyse, partinin tamamlanma günü teslimat gününe alınır (süre korunur).
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <div className="mt-4 flex justify-end border-t border-line pt-4">
+                    <SubmitButton>Kaydet</SubmitButton>
+                  </div>
+                </ActionForm>
+              </Modal>
+            ) : null}
             {canCancel ? (
               <Modal
                 trigger={

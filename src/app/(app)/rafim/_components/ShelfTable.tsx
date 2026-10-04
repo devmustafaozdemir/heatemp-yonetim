@@ -173,7 +173,7 @@ export function ShelfTable({
                 <th className="num hidden xl:table-cell">Birim maliyet (TL)</th>
                 <th className="num">{labels.value}</th>
                 {hasSale ? (
-                  <th className="num hidden lg:table-cell" title="Kalan adet × satış (liste) fiyatı, KDV hariç; USD güncel kurla TL'ye çevrilir">
+                  <th className="num" title="Kalan adet × satış (liste) fiyatı, KDV hariç; USD güncel kurla TL'ye çevrilir">
                     Satış değeri
                   </th>
                 ) : null}
@@ -243,16 +243,19 @@ export function ShelfTable({
                       <td className="num hidden xl:table-cell">
                         <span className="block text-[11px] text-ink-muted">ort.</span>
                         {g.remaining > 0 ? fmtMoney(g.value_try / g.remaining, "TRY") : "—"}
+                        {g.remaining > 0 ? (
+                          <span className="block text-[11px] text-ink-muted">{fmtUnitMoney(g.value_usd / g.remaining, "USD")}</span>
+                        ) : null}
                       </td>
                       <td className="num font-semibold text-ink" title={`Raf maliyet değerinin %${shareText}'i`}>
                         {fmtMoney(g.value_try, "TRY")}
                         <span className="block text-[11px] font-normal text-ink-muted">
-                          <span className="sm:hidden">{fmtInt(g.remaining)} adet</span>
-                          <span className="hidden sm:inline">{fmtMoney(g.value_usd, "USD")}</span> · %{shareText}
+                          {fmtMoney(g.value_usd, "USD")} · %{shareText}
+                          <span className="block sm:hidden">{fmtInt(g.remaining)} adet</span>
                         </span>
                       </td>
                       {hasSale ? (
-                        <td className="num hidden lg:table-cell">
+                        <td className="num">
                           {g.sale ? (
                             <>
                               <span className="font-semibold text-ink">{fmtMoney(g.sale.amount, g.sale.currency)}</span>
@@ -316,7 +319,7 @@ export function ShelfTable({
                                 {fmtUnitMoney(l.unit_cost_try, "TRY")}/adet
                               </span>
                             </td>
-                            {hasSale ? <td className="hidden lg:table-cell" /> : null}
+                            {hasSale ? <td /> : null}
                             {showAction ? <td className="hidden sm:table-cell" /> : null}
                           </tr>
                         ))
@@ -338,16 +341,19 @@ export function ShelfTable({
                 <td className="num hidden xl:table-cell">
                   <span className="block text-[11px] font-normal text-ink-muted">ort.</span>
                   {totals.remaining > 0 ? fmtMoney(totals.value_try / totals.remaining, "TRY") : "—"}
+                  {totals.remaining > 0 ? (
+                    <span className="block text-[11px] font-normal text-ink-muted">{fmtUnitMoney(totals.value_usd / totals.remaining, "USD")}</span>
+                  ) : null}
                 </td>
                 <td className="num">
                   {fmtMoney(totals.value_try, "TRY")}
                   <span className="block text-[11px] font-normal text-ink-muted">
-                    <span className="sm:hidden">{fmtInt(totals.remaining)} adet</span>
-                    <span className="hidden sm:inline">{fmtMoney(totals.value_usd, "USD")}</span>
+                    {fmtMoney(totals.value_usd, "USD")}
+                    <span className="block sm:hidden">{fmtInt(totals.remaining)} adet</span>
                   </span>
                 </td>
                 {hasSale ? (
-                  <td className="num hidden lg:table-cell">
+                  <td className="num">
                     {saleTotals.unconverted ? "—" : fmtMoney(saleTotals.try, "TRY")}
                     <span className="block text-[11px] font-normal text-ink-muted">
                       {[saleTotals.usd > 0 ? fmtMoney(saleTotals.usd, "USD") : null, saleTotals.tryOnly > 0 ? fmtMoney(saleTotals.tryOnly, "TRY") : null]

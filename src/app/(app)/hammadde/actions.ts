@@ -25,17 +25,20 @@ export async function createMaterial(formData: FormData) {
 export async function updateMaterial(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {
     const id = form.id("id", "Malzeme");
+    const unitKind = form.oneOf("unit_kind", "Birim türü", UNIT_KINDS);
+    const displayUnit = form.text("display_unit", "Gösterim birimi", { required: true });
     const values = {
       code: form.text("code", "Malzeme kodu", { required: true, max: 40 }),
       name: form.text("name", "Malzeme adı", { required: true, max: 160 }),
       kind: form.oneOf("kind", "Tür", ["raw", "component"] as const, "raw"),
-      display_unit: form.text("display_unit", "Gösterim birimi", { required: true }),
       notes: form.text("notes", "Not", { max: 1000 }),
       vat_rate: form.decimal("vat_rate", "KDV oranı", { min: 0 }) ?? 20,
       is_active: form.bool("is_active"),
     };
     form.assertValid();
     unwrap(await ctx.supabase.from("raw_materials").update(values).eq("id", id!).select("id").single());
+    // Birim türü / gösterim birimi: hareket ve reçeteler birlikte dönüştürülür (görünen miktarlar korunur).
+    unwrap(await ctx.supabase.rpc("change_material_unit", { p_material_id: id, p_unit_kind: unitKind, p_display_unit: displayUnit }));
     return { message: "Malzeme güncellendi." };
   });
 }
