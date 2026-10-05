@@ -1,6 +1,7 @@
 import { BadgeCheck, Building2, FileText, Plus, Receipt, TrendingUp, Trophy } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { DeleteButton } from "@/components/DeleteButton";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { Card, EmptyState, ErrorState, MetricRow, PageHeader, ProgressBar, StatCard, TableWrap, buttonClass } from "@/components/ui";
 import { Drawer } from "@/components/ui/dialog";
@@ -15,7 +16,7 @@ import { CorporateRevenueChart } from "./_components/CustomerCharts";
 import { DropParam } from "./_components/DropParam";
 import { redirectIfPageOutOfRange } from "./_components/paging";
 import type { CustomerListRow, CustomersOverview } from "./_components/types";
-import { createCustomer } from "./actions";
+import { createCustomer, deleteCustomer } from "./actions";
 import { CustomerFields } from "./CustomerFields";
 
 export const metadata: Metadata = { title: "Kurumsal Müşteriler" };
@@ -349,7 +350,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                         </td>
                         <td className="whitespace-nowrap tabular-nums">{c.last_sold_on ? fmtDate(c.last_sold_on) : <span className="text-xs text-ink-muted">Satış yok</span>}</td>
                         <td className="text-right whitespace-nowrap">
-                          <RowActions id={c.id} name={c.name} />
+                          <RowActions id={c.id} name={c.name} deletable={isAdmin && c.quote_count + c.cancelled_quote_count === 0 && c.sale_count + c.cancelled_sale_count === 0} />
                         </td>
                       </tr>
                     );
@@ -395,7 +396,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                         {open ? <dd className="text-[11px] break-words text-ink-muted tabular-nums">{open}</dd> : null}
                       </div>
                     </dl>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Link href={`/musteriler/${c.id}?sekme=teklifler`} className={buttonClass("secondary", "sm")} aria-label={`${c.name}: teklifler`}>
                         <FileText aria-hidden />
                         Teklifler
@@ -406,6 +407,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                         Satışlar
                         <span className="text-ink-muted tabular-nums">{fmtInt(c.sale_count + c.cancelled_sale_count)}</span>
                       </Link>
+                      {isAdmin && c.quote_count + c.cancelled_quote_count === 0 && c.sale_count + c.cancelled_sale_count === 0 ? (
+                        <span className="ml-auto">
+                          <DeleteCustomer id={c.id} name={c.name} />
+                        </span>
+                      ) : null}
                     </div>
                   </li>
                 );
@@ -419,8 +425,17 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   );
 }
 
-/** Satır işlemleri: müşteri sayfasındaki sekmelere kısayollar. */
-function RowActions({ id, name }: { id: string; name: string }) {
+/** Satış veya teklifi olmayan müşteriyi silme düğmesi (yalnız yönetici). */
+function DeleteCustomer({ id, name }: { id: string; name: string }) {
+  return (
+    <DeleteButton action={deleteCustomer} fields={{ id }} title={`${name} silinsin mi?`} label={`${name}: sil`} compact>
+      Müşteri kaydı kalıcı olarak silinir. Bu işlem geri alınamaz.
+    </DeleteButton>
+  );
+}
+
+/** Satır işlemleri: müşteri sayfasındaki sekmelere kısayollar; geçmişi olmayan müşteride silme. */
+function RowActions({ id, name, deletable }: { id: string; name: string; deletable: boolean }) {
   const icon = `${buttonClass("ghost", "sm")} size-8 px-0`;
   return (
     <div className="inline-flex items-center gap-0.5">
@@ -430,6 +445,7 @@ function RowActions({ id, name }: { id: string; name: string }) {
       <Link href={`/musteriler/${id}?sekme=satislar`} className={icon} title="Satışlar" aria-label={`${name}: satışlar`}>
         <Receipt aria-hidden />
       </Link>
+      {deletable ? <DeleteCustomer id={id} name={name} /> : null}
     </div>
   );
 }
