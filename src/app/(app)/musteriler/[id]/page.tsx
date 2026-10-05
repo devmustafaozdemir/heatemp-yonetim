@@ -20,6 +20,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { DeleteButton } from "@/components/DeleteButton";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { QuoteStatusBadge, SaleStatusBadge } from "@/components/status";
 import { Alert, Badge, Card, EmptyState, ErrorState, MetricRow, PageHeader, ProgressBar, StatCard, TableWrap, cx } from "@/components/ui";
@@ -31,7 +32,7 @@ import { first, hrefWith, parseListParams, type SearchParams } from "@/lib/list-
 import { isUuid } from "@/lib/parse";
 import { load, must } from "@/lib/query";
 import type { QuoteView, SaleView } from "@/lib/types";
-import { createQuote, updateCustomer } from "../actions";
+import { createQuote, deleteCustomer, updateCustomer } from "../actions";
 import { CustomerActiveBadge, LoadFailed, openAmountText } from "../_components/bits";
 import { CustomerSalesChart } from "../_components/CustomerSalesChart";
 import { daysBetween, redirectIfPageOutOfRange } from "../_components/paging";
@@ -226,27 +227,40 @@ export default async function CustomerPage({ params, searchParams }: { params: P
           icon={UserRound}
           actions={
             isAdmin ? (
-              <Drawer
-                trigger={
-                  <>
-                    <Pencil aria-hidden />
-                    Düzenle
-                  </>
-                }
-                triggerVariant="secondary"
-                triggerSize="sm"
-                title="Müşteri bilgilerini düzenle"
-                description={customer.name}
-                size="md"
-              >
-                <ActionForm action={updateCustomer}>
-                  <input type="hidden" name="id" value={customer.id} />
-                  <CustomerFields customer={customer} />
-                  <div className="mt-5 flex justify-end border-t border-line pt-4">
-                    <SubmitButton>Kaydet</SubmitButton>
-                  </div>
-                </ActionForm>
-              </Drawer>
+              <div className="flex items-center gap-1">
+                <Drawer
+                  trigger={
+                    <>
+                      <Pencil aria-hidden />
+                      Düzenle
+                    </>
+                  }
+                  triggerVariant="secondary"
+                  triggerSize="sm"
+                  title="Müşteri bilgilerini düzenle"
+                  description={customer.name}
+                  size="md"
+                >
+                  <ActionForm action={updateCustomer}>
+                    <input type="hidden" name="id" value={customer.id} />
+                    <CustomerFields customer={customer} />
+                    <div className="mt-5 flex justify-end border-t border-line pt-4">
+                      <SubmitButton>Kaydet</SubmitButton>
+                    </div>
+                  </ActionForm>
+                </Drawer>
+                {customer.quote_count + customer.cancelled_quote_count === 0 && customer.sale_count + customer.cancelled_sale_count === 0 ? (
+                  <DeleteButton
+                    action={deleteCustomer}
+                    fields={{ id: customer.id, redirect: "1" }}
+                    title={`${customer.name} silinsin mi?`}
+                    label={`${customer.name}: sil`}
+                    compact
+                  >
+                    Müşteri kaydı kalıcı olarak silinir. Bu işlem geri alınamaz.
+                  </DeleteButton>
+                ) : null}
+              </div>
             ) : null
           }
         >

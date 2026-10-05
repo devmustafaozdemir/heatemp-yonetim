@@ -57,6 +57,24 @@ export async function updateCustomer(formData: FormData) {
   });
 }
 
+/** Satışı veya teklifi olmayan müşteriyi kalıcı siler; geçmişi olan müşteri pasif yapılır. */
+export async function deleteCustomer(formData: FormData) {
+  return adminAction(formData, async (ctx, form) => {
+    const id = form.id("id", "Müşteri");
+    const redirect = form.bool("redirect");
+    form.assertValid();
+    const [sales, quotes] = await Promise.all([
+      ctx.supabase.from("sales").select("id", { count: "exact", head: true }).eq("customer_id", id!),
+      ctx.supabase.from("quotes").select("id", { count: "exact", head: true }).eq("customer_id", id!),
+    ]);
+    if ((sales.count ?? 0) > 0 || (quotes.count ?? 0) > 0) {
+      throw new Error("Bu müşterinin satış veya teklif kaydı var; silinemez. Bunun yerine düzenleme ekranından pasif yapabilirsiniz.");
+    }
+    unwrap(await ctx.supabase.from("customers").delete().eq("id", id!).select("id").single());
+    return { message: "Müşteri silindi.", redirectTo: redirect ? "/musteriler" : undefined };
+  });
+}
+
 export async function createQuote(formData: FormData) {
   return adminAction(formData, async (ctx, form) => {
     const values = {

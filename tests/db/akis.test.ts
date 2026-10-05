@@ -643,7 +643,11 @@ describe("Parti tarih düzeltmesi", () => {
     // teslimattan sonraya alınamaz; tamamlanma başlamadan önce olamaz; gelecek olamaz
     await rpc(f.admin, "deliver_to_mekonsis", { p_variant_id: f.variantId, p_quantity: 2, p_batch_id: batch, p_delivered_on: doneDay });
     await expectError(
-      rpc(f.admin, "update_batch_dates", { p_batch_id: batch, p_started_at: `${startDay}T08:00:00+03:00`, p_completed_at: `${today}T09:00:00+03:00` }),
+      rpc(f.admin, "update_batch_dates", {
+        p_batch_id: batch,
+        p_started_at: `${startDay}T08:00:00+03:00`,
+        p_completed_at: `${await addDays(today, -2)}T09:00:00+03:00`,
+      }),
       /teslimat yapıldı/,
     );
     await expectError(
@@ -656,7 +660,7 @@ describe("Parti tarih düzeltmesi", () => {
 });
 
 describe("Teslimat tarih düzeltmesi", () => {
-  it("teslimat geri alınır; parti sonra girdiyse reddedilir, seçenekle parti de teslimat gününe çekilir", async () => {
+  it("teslimat geri alınır; parti sonra girdiyse reddedilir, seçenekle parti teslimattan 1 gün önceye çekilir", async () => {
     const f = await setupProduct(admin);
     await receive(f.admin, f.materials[0].id, 30, "kg", 10, "USD", f.fxId);
     await receive(f.admin, f.materials[1].id, 200, "adet", 80, "TRY", f.fxId);
@@ -672,10 +676,18 @@ describe("Teslimat tarih düzeltmesi", () => {
     expect(ml.d).toBe(day);
     const mv = await sql("select distinct movement_date::text as d from public.stock_movements where delivery_id = $1", [delivery]);
     expect(mv.map((r) => r.d)).toEqual([day]);
+    const dayBefore = await addDays(day, -1);
     const [hl] = await sql("select received_on::text as d from public.stock_layers where batch_id = $1 and location = 'heatemp'", [batch]);
-    expect(hl.d).toBe(day);
+    expect(hl.d).toBe(dayBefore);
     const [b] = await sql("select (completed_at at time zone 'Europe/Istanbul')::date::text as d, completed_at >= started_at as ok from public.production_batches where id = $1", [batch]);
-    expect(b).toEqual({ d: day, ok: true });
+    expect(b).toEqual({ d: dayBefore, ok: true });
+    // Parti zaten teslimattan önce bittiyse dokunulmaz; seçenek kapalıyken aynı gün teslimata izin verilir
+    await rpc(f.admin, "update_delivery_date", { p_delivery_id: delivery, p_date: await addDays(today, -3), p_move_batches: true });
+    const [hl2] = await sql("select received_on::text as d from public.stock_layers where batch_id = $1 and location = 'heatemp'", [batch]);
+    expect(hl2.d).toBe(dayBefore);
+    await rpc(f.admin, "update_delivery_date", { p_delivery_id: delivery, p_date: dayBefore });
+    const [hl3] = await sql("select received_on::text as d from public.stock_layers where batch_id = $1 and location = 'heatemp'", [batch]);
+    expect(hl3.d).toBe(dayBefore);
     await expectError(rpc(f.admin, "update_delivery_date", { p_delivery_id: delivery, p_date: await addDays(today, 1) }), /gelecekte/);
   });
 });
